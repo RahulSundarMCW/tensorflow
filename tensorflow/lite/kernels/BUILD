@@ -799,6 +799,7 @@ BUILTIN_KERNEL_SRCS = [
     "zeros_like.cc",
     "rfft2d.cc",
     "rng_bit_generator.cc",
+    "stablehlo_sort.cc"
 ]
 
 VARIABLE_KERNEL_SRCS = [
@@ -841,6 +842,7 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite/kernels/internal:tensor",
     "//tensorflow/lite/kernels/internal:tensor_utils",
     "//tensorflow/lite/kernels/internal:types",
+    "//tensorflow/core/platform:byte_order",
 ] + select({
     ":tflite_with_ruy_explicit_true": [],
     # Eigen multi-therading optimizations are only used when ruy is disabled.
@@ -901,6 +903,7 @@ cc_library(
         "//tensorflow/lite:string",
         "@farmhash_archive//:farmhash",
         "//third_party/fft2d:fft2d_headers",
+
     ],
 )
 
@@ -2014,6 +2017,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -3397,6 +3401,23 @@ cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+
+cc_test(
+    name = "stablehlo_sort_test",
+    size = "small",
+    srcs = ["stablehlo_sort_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        ":subgraph_test_util",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 
 tflite_portable_test_suite_combined(
     combine_conditions = {"deps": [":test_main"]},
