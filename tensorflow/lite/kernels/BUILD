@@ -772,6 +772,7 @@ BUILTIN_KERNEL_SRCS = [
     "stablehlo_reduce_window.cc",
     "stablehlo_min_max.cc",
     "stablehlo_scatter.cc",
+    "stablehlo_sort.cc",
     "sign.cc",
     "skip_gram.cc",
     "slice.cc",
@@ -799,7 +800,6 @@ BUILTIN_KERNEL_SRCS = [
     "zeros_like.cc",
     "rfft2d.cc",
     "rng_bit_generator.cc",
-    "stablehlo_sort.cc"
 ]
 
 VARIABLE_KERNEL_SRCS = [
@@ -842,7 +842,6 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite/kernels/internal:tensor",
     "//tensorflow/lite/kernels/internal:tensor_utils",
     "//tensorflow/lite/kernels/internal:types",
-    "//tensorflow/core/platform:byte_order",
 ] + select({
     ":tflite_with_ruy_explicit_true": [],
     # Eigen multi-therading optimizations are only used when ruy is disabled.

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <limits>
 #include <numeric>
 #include <vector>
@@ -26,10 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/portable_tensor.h"
-#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/tensor_slice_util.h"
@@ -98,12 +94,14 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
         args[(2 * x) + 1] =
             GetTensorData<DataType>(operands[x])[flat_rhs_index];
       }
-
       for (int i = 0; i < comparator_subgraph.inputs().size(); ++i) {
         TfLiteTensor* subgraph_input =
             comparator_subgraph.tensor(comparator_subgraph.inputs()[i]);
-        subgraph_input->params.scale = operands[0]->params.scale;
-        subgraph_input->params.zero_point = operands[0]->params.zero_point;
+        if (operands[0]->type == kTfLiteInt8 ||
+            operands[0]->type == kTfLiteInt16) {
+          subgraph_input->params.scale = operands[0]->params.scale;
+          subgraph_input->params.zero_point = operands[0]->params.zero_point;
+        }
         std::memcpy(subgraph_input->data.raw, &args[i], sizeof(DataType));
       }
 
@@ -165,7 +163,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (data->comparator_subgraph_index >= subgraphs->size()) {
     TF_LITE_KERNEL_LOG(context,
                        "Comparator subgraph not found for stablehlo.sort.");
-
     return TfLiteStatus::kTfLiteError;
   }
   Subgraph* comparator_subgraph =
@@ -180,7 +177,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* subgraph_output =
       comparator_subgraph->tensor(comparator_subgraph->outputs()[0]);
   TF_LITE_ENSURE_MSG(context, node->inputs->size > 0,
-                     "stablehlo.sort: 'Input' should not be empty.");
+                     "'stablehlo.sort' Input should not be empty.");
 
   for (int i = 0; i < node->inputs->size; ++i) {
     const TfLiteTensor* input_tensor;
@@ -189,9 +186,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output_tensor));
     TF_LITE_ENSURE_MSG(
         context, input_tensor->type == output_tensor->type,
-        "stablehlo.sort: 'Input' and 'Output' tensor types must be the same.");
+        "'stablehlo.sort' Input and Output tensor types must be the same.");
   }
-
   for (int i = 0; i < node->inputs->size; ++i) {
     const TfLiteTensor* input_tensor;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &input_tensor));
@@ -199,11 +195,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output_tensor));
     TF_LITE_ENSURE_MSG(
         context, input_tensor->dims->size == output_tensor->dims->size,
-        "stablehlo.sort: 'Input' and 'Output' tensor shapes must be the same.");
+        "'stablehlo.sort' Input and Output tensor shapes must be the same.");
     for (int j = 0; j < input_tensor->dims->size; ++j) {
       TF_LITE_ENSURE_MSG(
           context, input_tensor->dims->data[j] == output_tensor->dims->data[j],
-          "stablehlo.sort: 'Input' and 'Output' tensor shapes must be the "
+          "'stablehlo.sort' Input and Output tensor shapes must be the "
           "same.");
     }
   }
@@ -211,8 +207,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_MSG(context,
                      data->dimension >= -input->dims->size &&
                          data->dimension < input->dims->size,
-                     "stablehlo.sort: 'Dimension' out of range.");
-
+                     "'stablehlo.sort' Dimension out of range.");
   return TfLiteStatus::kTfLiteOk;
 }
 
@@ -252,7 +247,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                              outputs);
   } else if (data_type == kTfLiteInt32) {
     return EvalImpl<int>(context, node, inputs, dimension, is_stable, outputs);
-
   } else {
     TF_LITE_KERNEL_LOG(context, "(Index Type: %s) currently not supported.\n",
                        TfLiteTypeGetName(data_type));

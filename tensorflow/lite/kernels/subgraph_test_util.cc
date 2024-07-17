@@ -72,6 +72,7 @@ TfLiteRegistration* Register_RANDOM_INT() {
 }  // namespace ops
 
 namespace subgraph_test_util {
+  
 namespace {
 
 void AddTileNode(Subgraph* subgraph, int input0, int input1, int output) {
