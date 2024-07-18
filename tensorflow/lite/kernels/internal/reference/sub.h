@@ -264,7 +264,7 @@ void BroadcastSubSlow(const ArithmeticParams& params,
       [](T input1_val, T input2_val, const ArithmeticParams& params) {
         T activation_min, activation_max;
         GetActivationParams(params, &activation_min, &activation_max);
-        return ActivationFunctionWithMinMax(input1_val - input2_val,
+        return ActivationFunctionWithMinMax<T>(input1_val - input2_val,
                                             activation_min, activation_max);
       });
 }
@@ -440,6 +440,18 @@ inline void SetActivationMinMax(const ArithmeticParams& params,
                                 int64_t* activation_max) {
   *activation_min = params.int64_activation_min;
   *activation_max = params.int64_activation_max;
+}
+
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                Eigen::half* activation_min, Eigen::half* activation_max) {
+  *activation_min = params.Eigen_half_activation_min;
+  *activation_max = params.Eigen_half_activation_max;
+}
+
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                Eigen::bfloat16* activation_min, Eigen::bfloat16* activation_max) {
+  *activation_min = params.bf16_activation_min;
+  *activation_max = params.bf16_activation_max;
 }
 
 template <typename T>

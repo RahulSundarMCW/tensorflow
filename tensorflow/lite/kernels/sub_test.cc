@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include <stdint.h>
 
 #include <algorithm>
@@ -24,8 +26,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -64,7 +64,11 @@ class FloatSubOpModel : public BaseSubOpModel {
  public:
   using BaseSubOpModel::BaseSubOpModel;
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  // std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
 };
 
 class IntegerSubOpModel : public BaseSubOpModel {
@@ -153,7 +157,7 @@ TEST(FloatSubOpModel, NoActivationInplaceInput0) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3})));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
@@ -170,7 +174,7 @@ TEST(FloatSubOpModel, NoActivationInplaceInput1) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3})));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
@@ -182,8 +186,54 @@ TEST(FloatSubOpModel, NoActivation) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3})));
+}
+
+TEST(Float16SubOpModel, NoActivation) {
+  FloatSubOpModel m({TensorType_FLOAT16, {1, 1, 2, 2}},
+                    {TensorType_FLOAT16, {1, 1, 2, 2}},
+                    {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<Eigen::half>(m.input1(),
+                                {static_cast<Eigen::half>(2.109380e+00),
+                                 static_cast<Eigen::half>(-3.072270e+00),
+                                 static_cast<Eigen::half>(-1.582030e+00),
+                                 static_cast<Eigen::half>(-4.867190e+00)});
+  m.PopulateTensor<Eigen::half>(m.input2(),
+                                {static_cast<Eigen::half>(2.478030e-01),
+                                 static_cast<Eigen::half>(5.230470e+00),
+                                 static_cast<Eigen::half>(8.139640e-01),
+                                 static_cast<Eigen::half>(-6.064450e-01)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<Eigen::half>(),
+              ElementsAreArray(
+                  ArrayFloatNear({static_cast<Eigen::half>(1.861330e+00),
+                                  static_cast<Eigen::half>(-8.304680e+00),
+                                  static_cast<Eigen::half>(-2.396480e+00),
+                                  static_cast<Eigen::half>(-4.261720e+00)})));
+}
+
+TEST(BFloat16SubOpModel, NoActivation) {
+  FloatSubOpModel m({TensorType_BFLOAT16, {1, 1, 2, 2}},
+                    {TensorType_BFLOAT16, {1, 1, 2, 2}},
+                    {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input1(), {static_cast<Eigen::bfloat16>(-2.171880e+00),
+                   static_cast<Eigen::bfloat16>(-4.062500e+00),
+                   static_cast<Eigen::bfloat16>(9.625000e+00),
+                   static_cast<Eigen::bfloat16>(3.953130e+00)});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input2(), {static_cast<Eigen::bfloat16>(5.195310e-01),
+                   static_cast<Eigen::bfloat16>(3.656250e+00),
+                   static_cast<Eigen::bfloat16>(6.406250e+00),
+                   static_cast<Eigen::bfloat16>(1.781250e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<Eigen::bfloat16>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<Eigen::bfloat16>(-2.687500e+00),
+                   static_cast<Eigen::bfloat16>(-7.718750e+00),
+                   static_cast<Eigen::bfloat16>(3.218750e+00),
+                   static_cast<Eigen::bfloat16>(2.171880e+00)})));
 }
 
 TEST(FloatSubOpModel, ActivationRELU_N1_TO_1) {
@@ -193,7 +243,7 @@ TEST(FloatSubOpModel, ActivationRELU_N1_TO_1) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({-1.0, 0.0, 1.0, -0.3})));
 }
 
@@ -208,7 +258,7 @@ TEST(FloatSubOpModel, VariousInputShapes) {
     m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8, -1.1, 0.1});
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
-        m.GetOutput(),
+        m.GetOutput<float>(),
         ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3, 0.0, 1.9})))
         << "With shape number " << i;
   }
@@ -225,7 +275,7 @@ TEST(FloatSubOpModel, WithBroadcast) {
     m.PopulateTensor<float>(m.input2(), {0.5});
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
-        m.GetOutput(),
+        m.GetOutput<float>(),
         ElementsAreArray(ArrayFloatNear({-2.5, -0.3, 1.2, 0.0, -1.6, 1.5})))
         << "With shape number " << i;
   }
@@ -241,7 +291,7 @@ TEST(FloatSubOpModel, WithBroadcast5D) {
     m.PopulateTensor<float>(m.input2(), {0.5});
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
-        m.GetOutput(),
+        m.GetOutput<float>(),
         ElementsAreArray(ArrayFloatNear({-2.5, -0.3, 1.2, 0.0, -1.6, 1.5})))
         << "With shape number " << i;
   }
@@ -683,7 +733,7 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
+  EXPECT_THAT(m.GetOutput<float>(), testing::ContainerEq(output_ref));
 }
 
 template <typename IntegerType>
