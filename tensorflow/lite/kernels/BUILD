@@ -2014,7 +2014,6 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )

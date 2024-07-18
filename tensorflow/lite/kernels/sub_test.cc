@@ -63,8 +63,6 @@ class BaseSubOpModel : public SingleOpModel {
 class FloatSubOpModel : public BaseSubOpModel {
  public:
   using BaseSubOpModel::BaseSubOpModel;
-
-  // std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
   template <typename T>
   std::vector<T> GetOutput() {
     return ExtractVector<T>(output_);
@@ -195,22 +193,22 @@ TEST(Float16SubOpModel, NoActivation) {
                     {TensorType_FLOAT16, {1, 1, 2, 2}},
                     {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE);
   m.PopulateTensor<Eigen::half>(m.input1(),
-                                {static_cast<Eigen::half>(2.109380e+00),
-                                 static_cast<Eigen::half>(-3.072270e+00),
-                                 static_cast<Eigen::half>(-1.582030e+00),
-                                 static_cast<Eigen::half>(-4.867190e+00)});
+                                {Eigen::half(2.109380e+00),
+                                 Eigen::half(-3.072270e+00),
+                                 Eigen::half(-1.582030e+00),
+                                 Eigen::half(-4.867190e+00)});
   m.PopulateTensor<Eigen::half>(m.input2(),
-                                {static_cast<Eigen::half>(2.478030e-01),
-                                 static_cast<Eigen::half>(5.230470e+00),
-                                 static_cast<Eigen::half>(8.139640e-01),
-                                 static_cast<Eigen::half>(-6.064450e-01)});
+                                {Eigen::half(2.478030e-01),
+                                 Eigen::half(5.230470e+00),
+                                 Eigen::half(8.139640e-01),
+                                 Eigen::half(-6.064450e-01)});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<Eigen::half>(),
               ElementsAreArray(
-                  ArrayFloatNear({static_cast<Eigen::half>(1.861330e+00),
-                                  static_cast<Eigen::half>(-8.304680e+00),
-                                  static_cast<Eigen::half>(-2.396480e+00),
-                                  static_cast<Eigen::half>(-4.261720e+00)})));
+                  ArrayFloatNear({Eigen::half(1.861330e+00),
+                                  Eigen::half(-8.304680e+00),
+                                  Eigen::half(-2.396480e+00),
+                                  Eigen::half(-4.261720e+00)})));
 }
 
 TEST(BFloat16SubOpModel, NoActivation) {
@@ -218,22 +216,22 @@ TEST(BFloat16SubOpModel, NoActivation) {
                     {TensorType_BFLOAT16, {1, 1, 2, 2}},
                     {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE);
   m.PopulateTensor<Eigen::bfloat16>(
-      m.input1(), {static_cast<Eigen::bfloat16>(-2.171880e+00),
-                   static_cast<Eigen::bfloat16>(-4.062500e+00),
-                   static_cast<Eigen::bfloat16>(9.625000e+00),
-                   static_cast<Eigen::bfloat16>(3.953130e+00)});
+      m.input1(), {Eigen::bfloat16(-2.171880e+00),
+                   Eigen::bfloat16(-4.062500e+00),
+                   Eigen::bfloat16(9.625000e+00),
+                   Eigen::bfloat16(3.953130e+00)});
   m.PopulateTensor<Eigen::bfloat16>(
-      m.input2(), {static_cast<Eigen::bfloat16>(5.195310e-01),
-                   static_cast<Eigen::bfloat16>(3.656250e+00),
-                   static_cast<Eigen::bfloat16>(6.406250e+00),
-                   static_cast<Eigen::bfloat16>(1.781250e+00)});
+      m.input2(), {Eigen::bfloat16(5.195310e-01),
+                   Eigen::bfloat16(3.656250e+00),
+                   Eigen::bfloat16(6.406250e+00),
+                   Eigen::bfloat16(1.781250e+00)});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<Eigen::bfloat16>(),
               ElementsAreArray(ArrayFloatNear(
-                  {static_cast<Eigen::bfloat16>(-2.687500e+00),
-                   static_cast<Eigen::bfloat16>(-7.718750e+00),
-                   static_cast<Eigen::bfloat16>(3.218750e+00),
-                   static_cast<Eigen::bfloat16>(2.171880e+00)})));
+                  {Eigen::bfloat16(-2.687500e+00),
+                   Eigen::bfloat16(-7.718750e+00),
+                   Eigen::bfloat16(3.218750e+00),
+                   Eigen::bfloat16(2.171880e+00)})));
 }
 
 TEST(FloatSubOpModel, ActivationRELU_N1_TO_1) {

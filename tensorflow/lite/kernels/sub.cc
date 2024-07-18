@@ -20,7 +20,6 @@ limitations under the License.
 #include <algorithm>
 #include <limits>
 
-#include "Eigen/Core"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -39,7 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 // to make sub.cc work with f16 and bf16 the following line must be commented -
-// line: 701 and 1551 in "tensorflow/lite/kernels/BUILD", line: 62 in
+// line: 701 and 1557 in "tensorflow/lite/kernels/BUILD", line: 62 in
 // "tensorflow/lite/core/kernels/builtin_op_kernels.h" and line: 58 in
 // "tensorflow/lite/core/kernels/register.cc"
 
