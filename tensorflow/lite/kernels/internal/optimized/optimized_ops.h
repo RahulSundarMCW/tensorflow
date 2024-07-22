@@ -40,7 +40,6 @@ limitations under the License.
 #endif
 
 #include "Eigen/Core"  // from @eigen_archive
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/common.h"
@@ -59,6 +58,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/transpose_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #if __aarch64__ && __clang__
 #define TFLITE_SOFTMAX_USE_UINT16_LUT
@@ -1521,10 +1521,61 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
   }
 }
 
+inline void AddElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::half* input1_data,
+                           const Eigen::half* input2_data,
+                           Eigen::half* output_data) {
+  int i = 0;
+
+  for (; i < size; i++) {
+    auto x = input1_data[i] + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.Eigen_half_activation_min, params.Eigen_half_activation_max);
+  }
+}
+
+inline void AddElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::bfloat16* input1_data,
+                           const Eigen::bfloat16* input2_data,
+                           Eigen::bfloat16* output_data) {
+  int i = 0;
+
+  for (; i < size; i++) {
+    auto x = input1_data[i] + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, params.bf16_activation_min,
+                                                  params.bf16_activation_max);
+  }
+}
+
 inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const float* input1_data,
                 const RuntimeShape& input2_shape, const float* input2_data,
                 const RuntimeShape& output_shape, float* output_data) {
+  ruy::profiler::ScopeLabel label("Add");
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+  AddElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+
+inline void Add(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape,
+                const Eigen::half* input1_data,
+                const RuntimeShape& input2_shape,
+                const Eigen::half* input2_data,
+                const RuntimeShape& output_shape, Eigen::half* output_data) {
+  ruy::profiler::ScopeLabel label("Add");
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+  AddElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+
+inline void Add(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape,
+                const Eigen::bfloat16* input1_data,
+                const RuntimeShape& input2_shape,
+                const Eigen::bfloat16* input2_data,
+                const RuntimeShape& output_shape,
+                Eigen::bfloat16* output_data) {
   ruy::profiler::ScopeLabel label("Add");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
@@ -1755,6 +1806,30 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
     auto x = broadcast_value + input2_data[i];
     output_data[i] = ActivationFunctionWithMinMax(
         x, params.float_activation_min, params.float_activation_max);
+  }
+}
+
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               Eigen::half broadcast_value,
+                               const Eigen::half* input2_data,
+                               Eigen::half* output_data) {
+  int i = 0;
+  for (; i < size; ++i) {
+    auto x = broadcast_value + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.Eigen_half_activation_min, params.Eigen_half_activation_max);
+  }
+}
+
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               Eigen::bfloat16 broadcast_value,
+                               const Eigen::bfloat16* input2_data,
+                               Eigen::bfloat16* output_data) {
+  int i = 0;
+  for (; i < size; ++i) {
+    auto x = broadcast_value + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, params.bf16_activation_min,
+                                                  params.bf16_activation_max);
   }
 }
 
