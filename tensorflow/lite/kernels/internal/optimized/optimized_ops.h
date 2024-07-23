@@ -40,6 +40,7 @@ limitations under the License.
 #endif
 
 #include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/common.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/transpose_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #if __aarch64__ && __clang__
 #define TFLITE_SOFTMAX_USE_UINT16_LUT
@@ -1526,7 +1526,6 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
                            const Eigen::half* input2_data,
                            Eigen::half* output_data) {
   int i = 0;
-
   for (; i < size; i++) {
     auto x = input1_data[i] + input2_data[i];
     output_data[i] = ActivationFunctionWithMinMax(
@@ -1539,7 +1538,6 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
                            const Eigen::bfloat16* input2_data,
                            Eigen::bfloat16* output_data) {
   int i = 0;
-
   for (; i < size; i++) {
     auto x = input1_data[i] + input2_data[i];
     output_data[i] = ActivationFunctionWithMinMax(x, params.bf16_activation_min,

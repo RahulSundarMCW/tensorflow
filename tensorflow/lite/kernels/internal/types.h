@@ -1091,7 +1091,6 @@ template <typename P>
 inline void GetActivationParams(const P& params, Eigen::bfloat16* min,
                                 Eigen::bfloat16* max) {
   *min = params.bf16_activation_min;
-  ;
   *max = params.bf16_activation_max;
 }
 

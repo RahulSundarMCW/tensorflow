@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "Eigen/Core"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
