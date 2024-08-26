@@ -764,6 +764,7 @@ BUILTIN_KERNEL_SRCS = [
     "segment_sum.cc",
     "select.cc",
     "shape.cc",
+    "stablehlo_batch_norm_training.cc",
     "stablehlo_gather.cc",
     "stablehlo_add.cc",
     "stablehlo_composite.cc",
@@ -3394,6 +3395,20 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_batch_norm_training_test",
+    size = "small",
+    srcs = ["stablehlo_batch_norm_training_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
