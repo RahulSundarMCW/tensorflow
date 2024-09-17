@@ -658,7 +658,7 @@ typedef struct {
   // See the stablehlo spec for the explanation of the attributes:
   // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#batch_norm_training
   float epsilon;
-  int64_t feature_index;
+  int32_t feature_index;
 } TfLiteStablehloBatchNormTrainingParams;
 
 #ifdef __cplusplus

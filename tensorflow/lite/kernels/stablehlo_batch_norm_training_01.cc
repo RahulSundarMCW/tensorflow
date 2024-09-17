@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iostream>
 #include <vector>
 
 #include "Eigen/Core"
@@ -141,23 +140,39 @@ TfLiteStatus ComputeQuantizedMean(TfLiteContext* context, TfLiteNode* node,
   int resolved_axis[kMaxReduceRank];
   int temp_index[kMaxReduceRank];
   std::vector<int32_t> temp_sum(dimarray.size(), 0);
-  int32_t multiplier;
-  int shift;
-  const double real_multiplier = static_cast<double>(operand->params.scale) /
-                                 static_cast<double>(operand->params.scale);
-  QuantizeMultiplier(real_multiplier, &multiplier, &shift);
+  // const double twice_max_input_scale =
+  //     2 * std::max(operand->params.scale, batch_mean->params.scale);
+  // const double input_multiplier = operand->params.scale / twice_max_input_scale;
+  // int32_t output_multiplier, output_shift;
+  // tflite::QuantizeMultiplierSmallerThanOneExp(
+  //     input_multiplier, &output_multiplier, &output_shift);
+  // TF_LITE_ENSURE_OK(context,
+  //                   GetTemporarySafe(context, node, /*index=*/0, &temp_sum));
+  int32_t output_multiplier;
+  int output_shift;
+   const double real_multiplier =
+        static_cast<double>(operand->params.scale) /
+        static_cast<double>(operand->params.scale);
+  QuantizeMultiplier(real_multiplier, &output_multiplier, &output_shift);
   TF_LITE_ENSURE(
-      context, reference_ops::QuantizedMeanOrSum(
-                   GetTensorData<DataType>(operand), operand->params.zero_point,
-                   operand->dims->data, operand->dims->size,
-                   GetTensorData<DataType>(batch_mean), multiplier, shift,
-                   operand->params.zero_point, batch_mean->dims->data,
-                   batch_mean->dims->size, dimarray.data(), dimarray.size(),
-                   false, temp_index, resolved_axis, temp_sum.data(), false));
+      context,
+      reference_ops::QuantizedMeanOrSum(
+          GetTensorData<DataType>(operand), operand->params.zero_point,
+          operand->dims->data, operand->dims->size,
+          GetTensorData<DataType>(batch_mean), output_multiplier, output_shift,
+          batch_mean->params.zero_point, batch_mean->dims->data,
+          batch_mean->dims->size, dimarray.data(), dimarray.size(), false,
+          temp_index, resolved_axis, temp_sum.data(), false));
+  int64_t operand_size = 1;
+  for (int i = 0; i < operand->dims->size; ++i) {
+    operand_size *= operand->dims->data[i];
+  }
+  int64_t feature_dim = operand->dims->data[feature_index];
+  int64_t divisor = operand_size / feature_dim;
+
   DataType* mean_data = GetTensorData<DataType>(batch_mean);
   for (int i = 0; i < NumElements(batch_mean); ++i) {
-    // mean_data[i] = mean_data[i] / divisor;
-    std::cout << "\n\nQuantized Mean data is: " << int(mean_data[i]);
+    mean_data[i] = mean_data[i] / divisor;
   }
 
   return kTfLiteOk;
@@ -188,11 +203,6 @@ TfLiteStatus ComputeVariance(TfLiteContext* context, TfLiteNode* node,
                                batch_var);
 }
 
-float dequantize_value(const int32_t input, const double scale,
-                       int32_t zero_point) {
-  return float(scale * (input - zero_point));
-}
-
 template <typename DataType>
 TfLiteStatus ComputeQuantizedVariance(TfLiteContext* context, TfLiteNode* node,
                                       const TfLiteTensor* operand,
@@ -220,22 +230,20 @@ TfLiteStatus ComputeQuantizedVariance(TfLiteContext* context, TfLiteNode* node,
 
     const double twice_max_input_scale =
         2 * std::max(operand->params.scale, mean->params.scale);
-    const double real_input_multiplier =
+    const double input_multiplier =
         operand->params.scale / twice_max_input_scale;
     const double real_output_multiplier =
         twice_max_input_scale / ((1 << left_shift) * operand->params.scale);
     int32_t output_multiplier, output_shift;
-    int32_t input_multiplier, input_shift;
+
     tflite::QuantizeMultiplierSmallerThanOneExp(
-        real_output_multiplier, &output_multiplier, &output_shift);
-    tflite::QuantizeMultiplierSmallerThanOneExp(
-        real_input_multiplier, &input_multiplier, &input_shift);
+        input_multiplier, &output_multiplier, &output_shift);
     const int32_t scaled_operand_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_operand_val, input_multiplier, input_shift);
+            shifted_operand_val, output_multiplier, output_shift);
     const int32_t scaled_mean_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_mean_val, input_multiplier, input_shift);
+            shifted_mean_val, output_multiplier, output_shift);
 
     const int32_t raw_centered_val = scaled_operand_val - scaled_mean_val;
 
@@ -244,34 +252,8 @@ TfLiteStatus ComputeQuantizedVariance(TfLiteContext* context, TfLiteNode* node,
             raw_centered_val, output_multiplier, output_shift) +
         operand->params.zero_point;
 
-    std::cout << "\n\ncentered value is: "
-              << dequantize_value(raw_centered_output, operand->params.scale,
-                                  operand->params.zero_point)
-              << std::endl;
-    // centered_operand_data[i] =
-    // static_cast<DataType>(raw_centered_output * raw_centered_output);
-    double real_multiplier_mul =
-        operand->params.scale * operand->params.scale / operand->params.scale;
-    int mul_multiplier;
-    int mul_shift;
-    QuantizeMultiplier(real_multiplier_mul, &mul_multiplier, &mul_shift);
-
-    int centered_op_sqr = (raw_centered_output - operand->params.zero_point) *
-                          (raw_centered_output - operand->params.zero_point);
-    // std::cout<<"centered_op_sqr "<<centered_op_sqr<<std::endl;
-    int mul_output = MultiplyByQuantizedMultiplier(centered_op_sqr,
-                                                   mul_multiplier, mul_shift) +
-                     operand->params.scale;
-    // std::cout<<"mul output "<<mul_output<<std::endl;
-    const int32_t clamped_output = std::min(
-        static_cast<int32_t>(std::numeric_limits<int8_t>::max()),
-        std::max(static_cast<int32_t>(std::numeric_limits<int8_t>::min()),
-                 mul_output));
-    centered_operand_data[i] = clamped_output;
-    std::cout << "Squared centered value is: "
-              << dequantize_value(mul_output, operand->params.scale,
-                                  operand->params.zero_point)
-              << std::endl;
+    centered_operand_data[i] =
+        static_cast<DataType>(raw_centered_output * raw_centered_output);
   }
 
   return ComputeQuantizedMean<DataType>(context, node, temp_tensor,
@@ -300,7 +282,6 @@ TfLiteStatus BatchNormInference(TfLiteContext* context, TfLiteNode* node,
     DataType centered_value = operand_data[i] - mean_data[feature_index_value];
     DataType stddev = static_cast<DataType>(std::sqrt(
         static_cast<float>(variance_data[feature_index_value]) + epsilon));
-    std ::cout << "std_dev -- " << stddev << " \n\n ";
     output_data[i] =
         scale_data[feature_index_value] * (centered_value / stddev) +
         offset_data[feature_index_value];
@@ -335,31 +316,28 @@ TfLiteStatus BatchNormInferenceQuantized(
     DataType variance_value = variance_data[feature_index_value];
 
     const int32_t operand_val = -operand->params.zero_point + operand_data[i];
-    const int32_t mean_val = -operand->params.zero_point + mean_data[i];
+    const int32_t mean_val =
+        -operand->params.zero_point + mean_data[feature_index_value];
     const int32_t shifted_operand_val = operand_val * (1 << left_shift);
     const int32_t shifted_mean_val = mean_val * (1 << left_shift);
 
     const double twice_max_input_scale =
         2 * std::max(operand->params.scale, mean->params.scale);
-    const double real_input_multiplier =
+    const double input_multiplier =
         operand->params.scale / twice_max_input_scale;
     const double real_output_multiplier =
         twice_max_input_scale / ((1 << left_shift) * operand->params.scale);
     int32_t output_multiplier, output_shift;
-    int32_t input_multiplier, input_shift;
+
     tflite::QuantizeMultiplierSmallerThanOneExp(
-        real_output_multiplier, &output_multiplier, &output_shift);
-    tflite::QuantizeMultiplierSmallerThanOneExp(
-        real_input_multiplier, &input_multiplier, &input_shift);
+        input_multiplier, &output_multiplier, &output_shift);
     const int32_t scaled_operand_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_operand_val, input_multiplier, input_shift);
+            shifted_operand_val, output_multiplier, output_shift);
     const int32_t scaled_mean_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_mean_val, input_multiplier, input_shift);
-
+            shifted_mean_val, output_multiplier, output_shift);
     const int32_t raw_centered_val = scaled_operand_val - scaled_mean_val;
-
     const int32_t raw_centered_output =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             raw_centered_val, output_multiplier, output_shift) +
@@ -367,73 +345,19 @@ TfLiteStatus BatchNormInferenceQuantized(
 
     const int32_t scaled_variance_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            variance_value, input_multiplier, input_shift);
-
-    double real_multiplier_mul =
-        operand->params.scale * operand->params.scale / operand->params.scale;
-    int mul_multiplier;
-    int mul_shift;
-    QuantizeMultiplier(real_multiplier_mul, &mul_multiplier, &mul_shift);
-
+            variance_value, output_multiplier, output_shift);
     const int32_t scaled_scale_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            scale_value, input_multiplier, input_shift);
-    const int32_t scaled_epsilon_val =
+            scale_value, output_multiplier, output_shift);
+    const int32_t scaled_offset_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            epsilon_integer_val, input_multiplier, input_shift);
-    const int32_t raw_sum_val = scaled_variance_val + epsilon_integer_val;
-    std ::cout << "\n\nscaled_var -- " << scaled_variance_val << "\n\n";
-    std ::cout << "epsilon_int -- " << epsilon_integer_val << "\n\n";
-    std ::cout << "raw_sum_val -- " << raw_sum_val << "\n\n";
-    const int32_t raw_sum_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            raw_sum_val, output_multiplier, output_shift) +
-        operand->params.zero_point;
+            offset_value, output_multiplier, output_shift);
+    DataType stddev = static_cast<DataType>(
+        std::sqrt(scaled_variance_val + epsilon_integer_val));
+    const int32_t output_value =
+        scale_value * (raw_centered_output / stddev) + offset_value;
 
-    int stddev = static_cast<DataType>(
-        std::sqrt(raw_sum_output - operand->params.zero_point));
-    std :: cout << "sqrt output -- " << std::sqrt(raw_sum_output) << "\n\n";
-    std ::cout << "raw_sum_output -- " << raw_sum_output << "\n\n";
-    std ::cout << "operand->params.zero_point -- " << operand->params.zero_point
-               << "\n\n";
-    std ::cout << "std_dev -- " << stddev << " \n\n ";
-
-    int stddev_output =
-        MultiplyByQuantizedMultiplier(stddev, mul_multiplier, mul_shift) +
-        operand->params.scale;
-    const int32_t clamped_stddev_output = std::min(
-        static_cast<int32_t>(std::numeric_limits<int8_t>::max()),
-        std::max(static_cast<int32_t>(std::numeric_limits<int8_t>::min()),
-                 stddev_output));
-    int centered_op_stddev =
-        (scaled_scale_val - operand->params.zero_point) *
-        (raw_centered_output - operand->params.zero_point) /
-        (clamped_stddev_output - operand->params.zero_point);
-    // std::cout<<"centered_op_sqr "<<centered_op_sqr<<std::endl;
-    int div_output = MultiplyByQuantizedMultiplier(centered_op_stddev,
-                                                   mul_multiplier, mul_shift) +
-                     operand->params.scale;
-    // std::cout<<"mul output "<<mul_output<<std::endl;
-    const int32_t clamped_output = std::min(
-        static_cast<int32_t>(std::numeric_limits<int8_t>::max()),
-        std::max(static_cast<int32_t>(std::numeric_limits<int8_t>::min()),
-                 div_output));
-    const int32_t shifted_div_val = div_output * (1 << left_shift);
-    const int32_t scaled_div_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_div_val, input_multiplier, input_shift);
-
-    const int32_t shifted_offset_val = offset_value * (1 << left_shift);
-    const int32_t scaled_offset_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_offset_val, input_multiplier, input_shift);
-    const int32_t output_value = scaled_div_output + scaled_offset_output;
-
-    const int32_t shifted_raw_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            output_value, output_multiplier, output_shift) +
-        operand->params.zero_point;
-    output_data[i] = static_cast<DataType>(shifted_raw_output);
+    output_data[i] = static_cast<DataType>(output_value);
   }
 
   return kTfLiteOk;

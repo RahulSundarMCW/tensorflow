@@ -182,15 +182,15 @@ class StablehloBatchNormTrainingOpModel : public SingleOpModel {
   int batch_var_;
 };
 
-// template <typename Float>
-// class StablehloBatchNormTrainingTestFloat : public ::testing::Test {
-//  public:
-//   using FloatType = Float;
-// };
+template <typename Float>
+class StablehloBatchNormTrainingTestFloat : public ::testing::Test {
+ public:
+  using FloatType = Float;
+};
 
-// using FloatTestTypes = ::testing::Types<float, Eigen::half, Eigen::bfloat16>;
+using FloatTestTypes = ::testing::Types<float, Eigen::half, Eigen::bfloat16>;
 
-// TYPED_TEST_SUITE(StablehloBatchNormTrainingTestFloat, FloatTestTypes);
+TYPED_TEST_SUITE(StablehloBatchNormTrainingTestFloat, FloatTestTypes);
 
 // TYPED_TEST(StablehloBatchNormTrainingTestFloat, Ex1) {
 //   using Float = typename TestFixture::FloatType;
@@ -299,14 +299,14 @@ TYPED_TEST_SUITE(StablehloBatchNormTrainingTestInt, IntTestTypes);
 
 TYPED_TEST(StablehloBatchNormTrainingTestInt, Ex1) {
   using Int = typename TestFixture::IntType;
-  TfLiteStablehloBatchNormTrainingParams params = {0.01 /*epsilon*/,
+  TfLiteStablehloBatchNormTrainingParams params = {0.0 /*epsilon*/,
                                                    2 /*feature_index*/};
   float kQuantizedTolerance = GetTolerance<Int>(-7.0f, 7.0f);
   StablehloBatchNormTrainingOpModel model(
-      {GetTTEnum<Int>(), {2, 2, 2}, -12.0f, 12.0f},
-      {GetTTEnum<Int>(), {2}, -12.0f, 12.0f},
-      {GetTTEnum<Int>(), {2}, -12.0f, 12.0f}, {GetTTEnum<Int>(), {}, -12.0f, 12.0f},
-      {GetTTEnum<Int>(), {}, -12.0f, 12.0f}, {GetTTEnum<Int>(), {}, -12.0f, 12.0f},
+      {GetTTEnum<Int>(), {2, 2, 2}, -7.0f, 7.0f},
+      {GetTTEnum<Int>(), {2}, -7.0f, 7.0f},
+      {GetTTEnum<Int>(), {2}, -7.0f, 7.0f}, {GetTTEnum<Int>(), {}, -7.0f, 7.0f},
+      {GetTTEnum<Int>(), {}, -7.0f, 7.0f}, {GetTTEnum<Int>(), {}, -7.0f, 7.0f},
       params);
   model.QuantizeAndPopulate<Int>(
       model.input(), {float(1.0), float(-2.0), float(3.0), float(-4.0),
@@ -319,13 +319,13 @@ TYPED_TEST(StablehloBatchNormTrainingTestInt, Ex1) {
               ElementsAreArray(ArrayFloatNear(
                   {float(0.69), float(1.0), float(1.90), float(0.18),
                    float(1.90), float(0.18), float(-0.5), float(2.63)},
-                  0.1)));
+                  0.08)));
   EXPECT_THAT(
       model.GetDequantizedBatchMean<Int>(),
-      ElementsAreArray(ArrayFloatNear({float(1.5), float(-2.0)}, 0.1)));
+      ElementsAreArray(ArrayFloatNear({float(1.5), float(-2.0)}, 0.08)));
   EXPECT_THAT(
       model.GetDequantizedBatchVar<Int>(),
-      ElementsAreArray(ArrayFloatNear({float(2.75), float(6.0)}, 0.1)));
+      ElementsAreArray(ArrayFloatNear({float(2.75), float(6.0)}, 0.08)));
 }
 
 }  // namespace
