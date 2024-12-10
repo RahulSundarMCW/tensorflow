@@ -934,6 +934,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_CASE: {
       return ParseStablehloCase(op, error_reporter, allocator, builtin_data);
     }
+    case BuiltinOperator_STABLEHLO_COMPLEX: {
+      return ParseStablehloComplex(op, error_reporter, allocator, builtin_data);
+    }
+
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
@@ -2424,6 +2428,13 @@ TfLiteStatus ParseStablehloShiftLeft(const Operator* op,
                                      ErrorReporter* error_reporter,
                                      BuiltinDataAllocator* allocator,
                                      void** builtin_data) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloComplex(const Operator* op,
+                                   ErrorReporter* error_reporter,
+                                   BuiltinDataAllocator* allocator,
+                                   void** builtin_data) {
   return kTfLiteOk;
 }
 
