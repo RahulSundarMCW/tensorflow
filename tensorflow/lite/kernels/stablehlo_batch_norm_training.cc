@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iostream>
+#include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "Eigen/Core"
-#include "tensorflow/lite/kernels/internal/reference/reduce.h"
-#include "tensorflow/lite/kernels/internal/runtime_shape.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/stablehlo_batch_norm_training.h"
 
 namespace tflite {
 namespace ops {
@@ -35,29 +33,28 @@ constexpr int kOffsetTensor = 2;
 constexpr int kOutputTensor = 0;
 constexpr int kBatchMeanTensor = 1;
 constexpr int kBatchVarTensor = 2;
-int kMaxReduceRank = 8;
-int kMaxTemporaryTensors = 6;
+constexpr int kMaxReduceRank = 8;
 
 struct OpData {
   int scratch_tensor_index;
 };
 
 TfLiteStatus GetOutputShape(TfLiteContext* context, TfLiteIntArray* input_dims,
-                            int input_num_dims, std::vector<int64_t> axis,
+                            const int input_num_dims, std::vector<int64_t> axis,
                             int64_t num_axis, TfLiteIntArray** output_shape) {
   if (input_num_dims == 0) {
     *output_shape = TfLiteIntArrayCreate(0);
     return kTfLiteOk;
   }
   // Calculates size of reducing axis.
-  int num_reduce_axis = num_axis;
-  for (int i = 0; i < num_axis; ++i) {
+  int64_t num_reduce_axis = num_axis;
+  for (int64_t i = 0; i < num_axis; ++i) {
     int current = axis[i];
     if (current < 0) {
       current += input_num_dims;
     }
     TF_LITE_ENSURE(context, current >= 0 && current < input_num_dims);
-    for (int j = 0; j < i; ++j) {
+    for (int64_t j = 0; j < i; ++j) {
       int previous = axis[j];
       if (previous < 0) {
         previous += input_num_dims;
@@ -73,7 +70,7 @@ TfLiteStatus GetOutputShape(TfLiteContext* context, TfLiteIntArray* input_dims,
     int num_skip_axis = 0;
     for (int idx = 0; idx < input_num_dims; ++idx) {
       bool is_axis = false;
-      for (int axis_idx = 0; axis_idx < num_axis; ++axis_idx) {
+      for (int64_t axis_idx = 0; axis_idx < num_axis; ++axis_idx) {
         if (axis[axis_idx] == idx || axis[axis_idx] + input_num_dims == idx) {
           ++num_skip_axis;
           is_axis = true;
@@ -89,233 +86,26 @@ TfLiteStatus GetOutputShape(TfLiteContext* context, TfLiteIntArray* input_dims,
   }
 }
 
-template <typename DataType>
-TfLiteStatus ComputeMean(TfLiteContext* context, TfLiteNode* node,
-                         const TfLiteTensor* operand, int feature_index,
-                         TfLiteTensor* batch_mean) {
-  int operand_rank = operand->dims->size;
-  std::vector<int> dimarray;
-  for (int i = 0; i < operand_rank; ++i) {
-    if (i != feature_index) {
-      dimarray.push_back(i);
-    }
-  }
-  int resolved_axis[kMaxReduceRank];
-  int temp_index[kMaxReduceRank];
-  TF_LITE_ENSURE(context,
-                 reference_ops::ReduceGeneric<DataType>(
-                     GetTensorData<DataType>(operand), operand->dims->data,
-                     operand->dims->size, GetTensorData<DataType>(batch_mean),
-                     batch_mean->dims->data, batch_mean->dims->size,
-                     dimarray.data(), dimarray.size(), false, temp_index,
-                     resolved_axis, static_cast<DataType>(0),
-                     [](const DataType current, const DataType in) -> DataType {
-                       return in + current;
-                     }));
-  int64_t operand_size = 1;
-  for (int i = 0; i < operand->dims->size; ++i) {
-    operand_size *= operand->dims->data[i];
-  }
-  int64_t feature_dim = operand->dims->data[feature_index];
-  int64_t divisor = operand_size / feature_dim;
+template <typename T>
+T quantize_value(const float value, const double scale, int zero_point) {
+  int min_val = std::numeric_limits<T>::min();
+  int max_val = std::numeric_limits<T>::max();
 
-  DataType* mean_data = GetTensorData<DataType>(batch_mean);
-  for (int i = 0; i < NumElements(batch_mean); ++i) {
-    mean_data[i] = mean_data[i] / divisor;
-  }
+  int unclamped =
+      static_cast<int>(TfLiteRound(value / static_cast<float>(scale))) +
+      zero_point;
+  int clamped = std::min(std::max(unclamped, min_val), max_val);
 
-  return kTfLiteOk;
-}
-
-template <typename DataType>
-TfLiteStatus ComputeQuantizedMean(TfLiteContext* context, TfLiteNode* node,
-                                  const TfLiteTensor* operand,
-                                  int feature_index, TfLiteTensor* batch_mean) {
-  int operand_rank = operand->dims->size;
-  std::vector<int> dimarray;
-  for (int i = 0; i < operand_rank; ++i) {
-    if (i != feature_index) {
-      dimarray.push_back(i);
-    }
-  }
-  int resolved_axis[kMaxReduceRank];
-  int temp_index[kMaxReduceRank];
-  std::vector<int32_t> temp_sum(dimarray.size(), 0);
-  int32_t multiplier;
-  int shift;
-  const double real_multiplier = static_cast<double>(operand->params.scale) /
-                                 static_cast<double>(operand->params.scale);
-  QuantizeMultiplier(real_multiplier, &multiplier, &shift);
-  TF_LITE_ENSURE(
-      context, reference_ops::QuantizedMeanOrSum(
-                   GetTensorData<DataType>(operand), operand->params.zero_point,
-                   operand->dims->data, operand->dims->size,
-                   GetTensorData<DataType>(batch_mean), multiplier, shift,
-                   operand->params.zero_point, batch_mean->dims->data,
-                   batch_mean->dims->size, dimarray.data(), dimarray.size(),
-                   false, temp_index, resolved_axis, temp_sum.data(), false));
-  DataType* mean_data = GetTensorData<DataType>(batch_mean);
-  for (int i = 0; i < NumElements(batch_mean); ++i) {
-    // mean_data[i] = mean_data[i] / divisor;
-    std::cout << "\n\nQuantized Mean data is: " << int(mean_data[i]);
-  }
-
-  return kTfLiteOk;
-}
-
-template <typename DataType>
-TfLiteStatus ComputeVariance(TfLiteContext* context, TfLiteNode* node,
-                             const TfLiteTensor* operand, int feature_index,
-                             TfLiteTensor* batch_mean, TfLiteTensor* batch_var,
-                             TfLiteTensor* temp_tensor) {
-  TF_LITE_ENSURE_STATUS(
-      ComputeMean<DataType>(context, node, operand, feature_index, batch_mean));
-
-  DataType* mean_data = GetTensorData<DataType>(batch_mean);
-  int operand_rank = operand->dims->size;
-  std::vector<int> broadcast_shape(operand_rank, 1);
-  broadcast_shape[feature_index] = operand->dims->data[feature_index];
-
-  const DataType* operand_data = GetTensorData<DataType>(operand);
-  DataType* centered_operand_data = GetTensorData<DataType>(temp_tensor);
-  for (int i = 0; i < NumElements(operand); ++i) {
-    centered_operand_data[i] =
-        operand_data[i] - mean_data[i % broadcast_shape[feature_index]];
-    centered_operand_data[i] *= centered_operand_data[i];
-  }
-
-  return ComputeMean<DataType>(context, node, temp_tensor, feature_index,
-                               batch_var);
-}
-
-float dequantize_value(const int32_t input, const double scale,
-                       int32_t zero_point) {
-  return float(scale * (input - zero_point));
-}
-
-template <typename DataType>
-TfLiteStatus ComputeQuantizedVariance(TfLiteContext* context, TfLiteNode* node,
-                                      const TfLiteTensor* operand,
-                                      int feature_index, TfLiteTensor* mean,
-                                      TfLiteTensor* batch_var,
-                                      TfLiteTensor* temp_tensor) {
-  TF_LITE_ENSURE_STATUS(ComputeQuantizedMean<DataType>(context, node, operand,
-                                                       feature_index, mean));
-
-  DataType* mean_data = GetTensorData<DataType>(mean);
-  int operand_rank = operand->dims->size;
-  std::vector<int> broadcast_shape(operand_rank, 1);
-  broadcast_shape[feature_index] = operand->dims->data[feature_index];
-
-  const DataType* operand_data = GetTensorData<DataType>(operand);
-  DataType* centered_operand_data = GetTensorData<DataType>(temp_tensor);
-
-  const int32_t left_shift = 20;
-  for (int i = 0; i < NumElements(operand); ++i) {
-    const int32_t operand_val = -operand->params.zero_point + operand_data[i];
-    const int32_t mean_val = -operand->params.zero_point +
-                             mean_data[i % broadcast_shape[feature_index]];
-    const int32_t shifted_operand_val = operand_val * (1 << left_shift);
-    const int32_t shifted_mean_val = mean_val * (1 << left_shift);
-
-    const double twice_max_input_scale =
-        2 * std::max(operand->params.scale, mean->params.scale);
-    const double real_input_multiplier =
-        operand->params.scale / twice_max_input_scale;
-    const double real_output_multiplier =
-        twice_max_input_scale / ((1 << left_shift) * operand->params.scale);
-    int32_t output_multiplier, output_shift;
-    int32_t input_multiplier, input_shift;
-    tflite::QuantizeMultiplierSmallerThanOneExp(
-        real_output_multiplier, &output_multiplier, &output_shift);
-    tflite::QuantizeMultiplierSmallerThanOneExp(
-        real_input_multiplier, &input_multiplier, &input_shift);
-    const int32_t scaled_operand_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_operand_val, input_multiplier, input_shift);
-    const int32_t scaled_mean_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_mean_val, input_multiplier, input_shift);
-
-    const int32_t raw_centered_val = scaled_operand_val - scaled_mean_val;
-
-    const int32_t raw_centered_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            raw_centered_val, output_multiplier, output_shift) +
-        operand->params.zero_point;
-
-    std::cout << "\n\ncentered value is: "
-              << dequantize_value(raw_centered_output, operand->params.scale,
-                                  operand->params.zero_point)
-              << std::endl;
-    // centered_operand_data[i] =
-    // static_cast<DataType>(raw_centered_output * raw_centered_output);
-    double real_multiplier_mul =
-        operand->params.scale * operand->params.scale / operand->params.scale;
-    int mul_multiplier;
-    int mul_shift;
-    QuantizeMultiplier(real_multiplier_mul, &mul_multiplier, &mul_shift);
-
-    int centered_op_sqr = (raw_centered_output - operand->params.zero_point) *
-                          (raw_centered_output - operand->params.zero_point);
-    // std::cout<<"centered_op_sqr "<<centered_op_sqr<<std::endl;
-    int mul_output = MultiplyByQuantizedMultiplier(centered_op_sqr,
-                                                   mul_multiplier, mul_shift) +
-                     operand->params.scale;
-    // std::cout<<"mul output "<<mul_output<<std::endl;
-    const int32_t clamped_output = std::min(
-        static_cast<int32_t>(std::numeric_limits<int8_t>::max()),
-        std::max(static_cast<int32_t>(std::numeric_limits<int8_t>::min()),
-                 mul_output));
-    centered_operand_data[i] = clamped_output;
-    std::cout << "Squared centered value is: "
-              << dequantize_value(mul_output, operand->params.scale,
-                                  operand->params.zero_point)
-              << std::endl;
-  }
-
-  return ComputeQuantizedMean<DataType>(context, node, temp_tensor,
-                                        feature_index, batch_var);
-}
-
-template <typename DataType>
-TfLiteStatus BatchNormInference(TfLiteContext* context, TfLiteNode* node,
-                                const TfLiteTensor* operand,
-                                const TfLiteTensor* scale,
-                                const TfLiteTensor* offset,
-                                const TfLiteTensor* mean,
-                                const TfLiteTensor* variance, float epsilon,
-                                int feature_index, TfLiteTensor* output) {
-  int operand_rank = operand->dims->size;
-
-  const DataType* scale_data = GetTensorData<DataType>(scale);
-  const DataType* offset_data = GetTensorData<DataType>(offset);
-  const DataType* mean_data = GetTensorData<DataType>(mean);
-  const DataType* variance_data = GetTensorData<DataType>(variance);
-  const DataType* operand_data = GetTensorData<DataType>(operand);
-  DataType* output_data = GetTensorData<DataType>(output);
-
-  for (int i = 0; i < NumElements(operand); ++i) {
-    int feature_index_value = i % operand->dims->data[feature_index];
-    DataType centered_value = operand_data[i] - mean_data[feature_index_value];
-    DataType stddev = static_cast<DataType>(std::sqrt(
-        static_cast<float>(variance_data[feature_index_value]) + epsilon));
-    std ::cout << "std_dev -- " << stddev << " \n\n ";
-    output_data[i] =
-        scale_data[feature_index_value] * (centered_value / stddev) +
-        offset_data[feature_index_value];
-  }
-
-  return kTfLiteOk;
+  return static_cast<T>(clamped);
 }
 
 template <typename DataType>
 TfLiteStatus BatchNormInferenceQuantized(
     TfLiteContext* context, TfLiteNode* node, const TfLiteTensor* operand,
     const TfLiteTensor* scale, const TfLiteTensor* offset,
-    const TfLiteTensor* mean, const TfLiteTensor* variance, float epsilon,
-    int feature_index, TfLiteTensor* output) {
-  int operand_rank = operand->dims->size;
+    const TfLiteTensor* mean, const TfLiteTensor* variance, const float epsilon,
+    const int64_t feature_index, TfLiteTensor* output) {
+  const int operand_rank = operand->dims->size;
 
   const DataType* scale_data = GetTensorData<DataType>(scale);
   const DataType* offset_data = GetTensorData<DataType>(offset);
@@ -324,118 +114,338 @@ TfLiteStatus BatchNormInferenceQuantized(
   const DataType* operand_data = GetTensorData<DataType>(operand);
   DataType* output_data = GetTensorData<DataType>(output);
 
-  const int32_t left_shift = 20;
-  const int32_t epsilon_integer_val =
-      (epsilon * operand->params.scale) - operand->params.zero_point;
-  for (int i = 0; i < NumElements(operand); i++) {
-    int feature_index_value = i % operand->dims->data[feature_index];
-    DataType scale_value = scale_data[feature_index_value];
-    DataType offset_value = offset_data[feature_index_value];
-    DataType mean_value = mean_data[feature_index_value];
-    DataType variance_value = variance_data[feature_index_value];
+  const int kMin = std::numeric_limits<DataType>::min();
+  const int kMax = std::numeric_limits<DataType>::max();
 
-    const int32_t operand_val = -operand->params.zero_point + operand_data[i];
-    const int32_t mean_val = -operand->params.zero_point + mean_data[i];
-    const int32_t shifted_operand_val = operand_val * (1 << left_shift);
-    const int32_t shifted_mean_val = mean_val * (1 << left_shift);
-
+  const int left_shift = (operand->type == kTfLiteInt16) ? 15 : 20;
+  for (int64_t i = 0; i < NumElements(operand); ++i) {
+    int64_t feature_index_value = i % operand->dims->data[feature_index];
     const double twice_max_input_scale =
-        2 * std::max(operand->params.scale, mean->params.scale);
+        2 * std::max(operand->params.scale, operand->params.scale);
     const double real_input_multiplier =
         operand->params.scale / twice_max_input_scale;
     const double real_output_multiplier =
         twice_max_input_scale / ((1 << left_shift) * operand->params.scale);
-    int32_t output_multiplier, output_shift;
-    int32_t input_multiplier, input_shift;
-    tflite::QuantizeMultiplierSmallerThanOneExp(
-        real_output_multiplier, &output_multiplier, &output_shift);
+    int32_t output_multiplier;
+    int output_shift;
+    int32_t input_multiplier;
+    int input_shift;
+
     tflite::QuantizeMultiplierSmallerThanOneExp(
         real_input_multiplier, &input_multiplier, &input_shift);
-    const int32_t scaled_operand_val =
+    if (real_output_multiplier > 1) {
+      tflite::QuantizeMultiplierGreaterThanOne(
+          real_output_multiplier, &output_multiplier, &output_shift);
+    } else {
+      tflite::QuantizeMultiplierSmallerThanOneExp(
+          real_output_multiplier, &output_multiplier, &output_shift);
+    }
+    const int operand_val = -operand->params.zero_point + operand_data[i];
+    const int mean_val =
+        -operand->params.zero_point + mean_data[i % NumElements(mean)];
+    const int shifted_operand_val = operand_val * (1 << left_shift);
+    const int shifted_mean_val = mean_val * (1 << left_shift);
+    const int scaled_operand_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_operand_val, input_multiplier, input_shift);
-    const int32_t scaled_mean_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_mean_val, input_multiplier, input_shift);
-
-    const int32_t raw_centered_val = scaled_operand_val - scaled_mean_val;
-
-    const int32_t raw_centered_output =
+    const int scaled_mean_val = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+        shifted_mean_val, input_multiplier, input_shift);
+    const int raw_centered_val = scaled_operand_val - scaled_mean_val;
+    const int raw_centered_output =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             raw_centered_val, output_multiplier, output_shift) +
         operand->params.zero_point;
 
-    const int32_t scaled_variance_val =
+    const int variance_val =
+        -operand->params.zero_point + variance_data[i % NumElements(variance)];
+    const int epsilon_quantized =
+        (epsilon * operand->params.scale) - operand->params.zero_point;
+    const int epsilon_val = -operand->params.zero_point + epsilon_quantized;
+    const int shifted_variance_val = variance_val * (1 << left_shift);
+    const int shifted_epsilon_val = epsilon_val * (1 << left_shift);
+    const int scaled_variance_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            variance_value, input_multiplier, input_shift);
-
-    double real_multiplier_mul =
-        operand->params.scale * operand->params.scale / operand->params.scale;
-    int mul_multiplier;
-    int mul_shift;
-    QuantizeMultiplier(real_multiplier_mul, &mul_multiplier, &mul_shift);
-
-    const int32_t scaled_scale_val =
+            shifted_variance_val, input_multiplier, input_shift);
+    const int scaled_epsilon_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            scale_value, input_multiplier, input_shift);
-    const int32_t scaled_epsilon_val =
+            shifted_epsilon_val, input_multiplier, input_shift);
+    const int32_t raw_add_output = scaled_variance_val + scaled_epsilon_val;
+    const int raw_addition_output =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            epsilon_integer_val, input_multiplier, input_shift);
-    const int32_t raw_sum_val = scaled_variance_val + epsilon_integer_val;
-    std ::cout << "\n\nscaled_var -- " << scaled_variance_val << "\n\n";
-    std ::cout << "epsilon_int -- " << epsilon_integer_val << "\n\n";
-    std ::cout << "raw_sum_val -- " << raw_sum_val << "\n\n";
-    const int32_t raw_sum_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            raw_sum_val, output_multiplier, output_shift) +
+            raw_add_output, output_multiplier, output_shift) +
         operand->params.zero_point;
+    float input_sqrt = operand->params.scale *
+                       (raw_addition_output - operand->params.zero_point);
+    float stddev_deq = std::sqrt(input_sqrt);
+    int stddev = static_cast<int>(quantize_value<DataType>(
+        stddev_deq, operand->params.scale, operand->params.zero_point));
 
-    int stddev = static_cast<DataType>(
-        std::sqrt(raw_sum_output - operand->params.zero_point));
-    std :: cout << "sqrt output -- " << std::sqrt(raw_sum_output) << "\n\n";
-    std ::cout << "raw_sum_output -- " << raw_sum_output << "\n\n";
-    std ::cout << "operand->params.zero_point -- " << operand->params.zero_point
-               << "\n\n";
-    std ::cout << "std_dev -- " << stddev << " \n\n ";
+    int32_t div_multiplier;
+    int div_shift;
+    const double real_div_multiplier =
+        operand->params.scale / (operand->params.scale * operand->params.scale);
+    QuantizeMultiplier(real_div_multiplier, &div_multiplier, &div_shift);
+    TFLITE_DCHECK_NE(stddev - operand->params.zero_point, 0);
+    int input2_val = stddev - operand->params.zero_point;
+    int input1_val = raw_centered_output - operand->params.zero_point;
+    if (input2_val < 0) {
+      // Invert signs to avoid a negative input2_val as input2_inv needs to be
+      // positive to be used as multiplier of MultiplyByQuantizedMultiplier.
+      input1_val = -input1_val;
+      input2_val = -input2_val;
+    }
+    int recip_shift;
 
-    int stddev_output =
-        MultiplyByQuantizedMultiplier(stddev, mul_multiplier, mul_shift) +
+    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
+    const int headroom = CountLeadingSignBits(input1_val);
+    const int32_t unscaled_quotient =
+        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
+                                                    headroom);
+    const int total_shift = div_shift - recip_shift - headroom;
+    int32_t unclamped_result;
+    if (std::abs(total_shift) > 31) {
+      unclamped_result = operand->params.zero_point +
+                         MultiplyByQuantizedMultiplierGreaterThanOne(
+                             unscaled_quotient, div_multiplier, total_shift);
+    } else {
+      unclamped_result = operand->params.zero_point +
+                         MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                             unscaled_quotient, div_multiplier, total_shift);
+    }
+    const int32_t clamped_div_output = std::min(
+        static_cast<int>(std::numeric_limits<DataType>::max()),
+        std::max(static_cast<int>(std::numeric_limits<DataType>::min()),
+                 unclamped_result));
+    int32_t mul_multiplier;
+    int mul_shift;
+    const double real_mul_multiplier = operand->params.scale;
+    QuantizeMultiplier(real_mul_multiplier, &mul_multiplier, &mul_shift);
+    int32_t raw_output =
+        (-operand->params.zero_point + scale_data[i % NumElements(scale)]) *
+        (clamped_div_output - operand->params.zero_point);
+    int mul_final_output =
+        MultiplyByQuantizedMultiplier(raw_output, mul_multiplier, mul_shift) +
         operand->params.scale;
-    const int32_t clamped_stddev_output = std::min(
-        static_cast<int32_t>(std::numeric_limits<int8_t>::max()),
-        std::max(static_cast<int32_t>(std::numeric_limits<int8_t>::min()),
-                 stddev_output));
-    int centered_op_stddev =
-        (scaled_scale_val - operand->params.zero_point) *
-        (raw_centered_output - operand->params.zero_point) /
-        (clamped_stddev_output - operand->params.zero_point);
-    // std::cout<<"centered_op_sqr "<<centered_op_sqr<<std::endl;
-    int div_output = MultiplyByQuantizedMultiplier(centered_op_stddev,
-                                                   mul_multiplier, mul_shift) +
-                     operand->params.scale;
-    // std::cout<<"mul output "<<mul_output<<std::endl;
-    const int32_t clamped_output = std::min(
-        static_cast<int32_t>(std::numeric_limits<int8_t>::max()),
-        std::max(static_cast<int32_t>(std::numeric_limits<int8_t>::min()),
-                 div_output));
-    const int32_t shifted_div_val = div_output * (1 << left_shift);
-    const int32_t scaled_div_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_div_val, input_multiplier, input_shift);
-
-    const int32_t shifted_offset_val = offset_value * (1 << left_shift);
-    const int32_t scaled_offset_output =
+    const int clamped_mul_output = std::min(
+        static_cast<int>(std::numeric_limits<DataType>::max()),
+        std::max(static_cast<int>(std::numeric_limits<DataType>::min()),
+                 mul_final_output));
+    // Add offset to normalized_operand*scale
+    const int offset_val =
+        -operand->params.zero_point + offset_data[i % NumElements(offset)];
+    const int shifted_mul_val = clamped_mul_output * (1 << left_shift);
+    const int shifted_offset_val = offset_val * (1 << left_shift);
+    const int scaled_mul_val = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+        shifted_mul_val, input_multiplier, input_shift);
+    const int scaled_offset_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_offset_val, input_multiplier, input_shift);
-    const int32_t output_value = scaled_div_output + scaled_offset_output;
-
-    const int32_t shifted_raw_output =
+    const int raw_final_add_output = scaled_mul_val + scaled_offset_val;
+    const int raw_final_addition_output =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            output_value, output_multiplier, output_shift) +
+            raw_final_add_output, output_multiplier, output_shift) +
         operand->params.zero_point;
-    output_data[i] = static_cast<DataType>(shifted_raw_output);
+    output_data[i] = static_cast<DataType>(raw_final_addition_output);
   }
+  return kTfLiteOk;
+}
 
+// template <typename DataType>
+// TfLiteStatus BatchNormInferenceQuantized(
+//     TfLiteContext* context, TfLiteNode* node, const TfLiteTensor* operand,
+//     const TfLiteTensor* scale, const TfLiteTensor* offset,
+//     const TfLiteTensor* mean, const TfLiteTensor* variance, const float epsilon,
+//     const int64_t feature_index, TfLiteTensor* output) {
+  
+//   const int operand_rank = operand->dims->size;
+//   const DataType* scale_data = GetTensorData<DataType>(scale);
+//   const DataType* offset_data = GetTensorData<DataType>(offset);
+//   const DataType* mean_data = GetTensorData<DataType>(mean);
+//   const DataType* variance_data = GetTensorData<DataType>(variance);
+//   const DataType* operand_data = GetTensorData<DataType>(operand);
+//   DataType* output_data = GetTensorData<DataType>(output);
+
+//   const int kMin = std::numeric_limits<DataType>::min();
+//   const int kMax = std::numeric_limits<DataType>::max();
+//   const int left_shift = (operand->type == kTfLiteInt16) ? 15 : 20;
+
+//   for (int64_t i = 0; i < NumElements(operand); ++i) {
+//     int64_t feature_index_value = i % operand->dims->data[feature_index];
+    
+//     // Debug: Index and feature index value
+//     std::cout << "Index: " << i << "\n";
+//     std::cout << "Feature Index Value: " << feature_index_value << "\n";
+    
+//     const double twice_max_input_scale = 2 * std::max(operand->params.scale, operand->params.scale);
+//     const double real_input_multiplier = operand->params.scale / twice_max_input_scale;
+//     const double real_output_multiplier = twice_max_input_scale / ((1 << left_shift) * operand->params.scale);
+
+//     // Debug: Multipliers
+//     std::cout << "Real Input Multiplier: " << real_input_multiplier << "\n";
+//     std::cout << "Real Output Multiplier: " << real_output_multiplier << "\n";
+
+//     int32_t output_multiplier;
+//     int output_shift;
+//     int32_t input_multiplier;
+//     int input_shift;
+
+//     tflite::QuantizeMultiplierSmallerThanOneExp(real_input_multiplier, &input_multiplier, &input_shift);
+//     if (real_output_multiplier > 1) {
+//       tflite::QuantizeMultiplierGreaterThanOne(real_output_multiplier, &output_multiplier, &output_shift);
+//     } else {
+//       tflite::QuantizeMultiplierSmallerThanOneExp(real_output_multiplier, &output_multiplier, &output_shift);
+//     }
+
+//     const int operand_val = -operand->params.zero_point + operand_data[i];
+//     const int mean_val = -operand->params.zero_point + mean_data[i % NumElements(mean)];
+//     const int shifted_operand_val = operand_val * (1 << left_shift);
+//     const int shifted_mean_val = mean_val * (1 << left_shift);
+
+//     // Debug: Shifted values
+//     std::cout << "Operand->Params.ZeroPoint + OperandData = " << static_cast<int16>(-operand->params.zero_point) << " + " << operand_data[i] << "\n";
+//     std::cout << "Shifted Operand Value: " << shifted_operand_val << "\n";
+//     std::cout << "Shifted Mean Value: " << shifted_mean_val << "\n";
+
+//     const int scaled_operand_val = MultiplyByQuantizedMultiplierSmallerThanOneExp(shifted_operand_val, input_multiplier, input_shift);
+//     const int scaled_mean_val = MultiplyByQuantizedMultiplierSmallerThanOneExp(shifted_mean_val, input_multiplier, input_shift);
+
+//     const int raw_centered_val = scaled_operand_val - scaled_mean_val;
+//     const int raw_centered_output = MultiplyByQuantizedMultiplierSmallerThanOneExp(raw_centered_val, output_multiplier, output_shift) + operand->params.zero_point;
+
+//     // Debug: Centered output
+//     std::cout << "Raw Centered Output: " << raw_centered_output << "\n";
+
+//     const int variance_val = -operand->params.zero_point + variance_data[i % NumElements(variance)];
+//     const int epsilon_quantized = (epsilon * operand->params.scale) - operand->params.zero_point;
+//     const int epsilon_val = -operand->params.zero_point + epsilon_quantized;
+//     const int shifted_variance_val = variance_val * (1 << left_shift);
+//     const int shifted_epsilon_val = epsilon_val * (1 << left_shift);
+
+//     // Debug: Variance and Epsilon values
+//     std::cout << "Variance Value: " << variance_val << "\n";
+//     std::cout << "Epsilon Value: " << epsilon_val << "\n";
+    
+//     const int scaled_variance_val = MultiplyByQuantizedMultiplierSmallerThanOneExp(shifted_variance_val, input_multiplier, input_shift);
+//     const int scaled_epsilon_val = MultiplyByQuantizedMultiplierSmallerThanOneExp(shifted_epsilon_val, input_multiplier, input_shift);
+
+//     const int32_t raw_add_output = scaled_variance_val + scaled_epsilon_val;
+//     const int raw_addition_output = MultiplyByQuantizedMultiplierSmallerThanOneExp(raw_add_output, output_multiplier, output_shift) + operand->params.zero_point;
+
+//     // Debug: After adding variance and epsilon
+//     std::cout << "Raw Addition Output: " << raw_addition_output << "\n";
+
+//     float input_sqrt = operand->params.scale * (raw_addition_output - operand->params.zero_point);
+//     float stddev_deq = std::sqrt(input_sqrt);
+    
+//     // Debug: Standard deviation (dequantized)
+//     std::cout << "Standard Deviation (Dequantized): " << stddev_deq << "\n";
+
+//     int stddev = static_cast<int>(quantize_value<DataType>(stddev_deq, operand->params.scale, operand->params.zero_point));
+
+//     int32_t div_multiplier;
+//     int div_shift;
+//     const double real_div_multiplier = operand->params.scale / (operand->params.scale * operand->params.scale);
+//     QuantizeMultiplier(real_div_multiplier, &div_multiplier, &div_shift);
+
+//     // Debug: Division multipliers
+//     std::cout << "Division Multiplier: " << real_div_multiplier << "\n";
+    
+//     TFLITE_DCHECK_NE(stddev - operand->params.zero_point, 0);
+//     int input2_val = stddev - operand->params.zero_point;
+//     int input1_val = raw_centered_output - operand->params.zero_point;
+    
+//     if (input2_val < 0) {
+//       input1_val = -input1_val;
+//       input2_val = -input2_val;
+//     }
+
+//     int recip_shift;
+//     const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
+//     const int headroom = CountLeadingSignBits(input1_val);
+//     const int32_t unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv, headroom);
+
+//     // Debug: Reciprocal and unscaled quotient
+//     std::cout << "Reciprocal: " << input2_inv << "\n";
+//     std::cout << "Unscaled Quotient: " << unscaled_quotient << "\n";
+
+//     const int total_shift = div_shift - recip_shift - headroom;
+//     int32_t unclamped_result;
+
+//     if (std::abs(total_shift) > 31) {
+//       unclamped_result = operand->params.zero_point +
+//                          MultiplyByQuantizedMultiplierGreaterThanOne(unscaled_quotient, div_multiplier, total_shift);
+//     } else {
+//       unclamped_result = operand->params.zero_point +
+//                          MultiplyByQuantizedMultiplierSmallerThanOneExp(unscaled_quotient, div_multiplier, total_shift);
+//     }
+
+//     const int32_t clamped_div_output = std::min(static_cast<int>(std::numeric_limits<DataType>::max()),
+//                                                 std::max(static_cast<int>(std::numeric_limits<DataType>::min()), unclamped_result));
+
+//     // Debug: Clamped division output
+//     std::cout << "Clamped Division Output: " << clamped_div_output << "\n";
+
+//     int32_t mul_multiplier;
+//     int mul_shift;
+//     const double real_mul_multiplier = operand->params.scale;
+//     QuantizeMultiplier(real_mul_multiplier, &mul_multiplier, &mul_shift);
+
+//     int32_t raw_output = (-operand->params.zero_point + scale_data[i % NumElements(scale)]) *
+//                          (clamped_div_output - operand->params.zero_point);
+//     int mul_final_output = MultiplyByQuantizedMultiplier(raw_output, mul_multiplier, mul_shift) + operand->params.scale;
+
+//     const int clamped_mul_output = std::min(static_cast<int>(std::numeric_limits<DataType>::max()),
+//                                             std::max(static_cast<int>(std::numeric_limits<DataType>::min()), mul_final_output));
+
+//     // Debug: Clamped multiplication output
+//     std::cout << "Clamped Multiplication Output: " << clamped_mul_output << "\n";
+
+//     const int offset_val = -operand->params.zero_point + offset_data[i % NumElements(offset)];
+//     const int shifted_mul_val = clamped_mul_output * (1 << left_shift);
+//     const int shifted_offset_val = offset_val * (1 << left_shift);
+
+//     const int scaled_mul_val = MultiplyByQuantizedMultiplierSmallerThanOneExp(shifted_mul_val, input_multiplier, input_shift);
+//     const int scaled_offset_val = MultiplyByQuantizedMultiplierSmallerThanOneExp(shifted_offset_val, input_multiplier, input_shift);
+
+//     const int raw_final_add_output = scaled_mul_val + scaled_offset_val;
+//     const int raw_final_addition_output = MultiplyByQuantizedMultiplierSmallerThanOneExp(raw_final_add_output, output_multiplier, output_shift) + operand->params.zero_point;
+
+//     // Debug: Final addition output
+//     std::cout << "Raw Final Addition Output: " << raw_final_addition_output << "\n";
+
+//     output_data[i] = static_cast<DataType>(std::min(kMax, std::max(kMin, raw_final_addition_output)));
+
+//     // Debug: Final output value
+//     std::cout << "Final Output[" << i << "]: " << static_cast<int>(output_data[i]) << "\n";
+//   }
+
+//   return kTfLiteOk;
+// }
+
+
+template <typename DataType>
+TfLiteStatus BatchNormInference(
+    TfLiteContext* context, TfLiteNode* node, const TfLiteTensor* operand,
+    const TfLiteTensor* scale, const TfLiteTensor* offset,
+    const TfLiteTensor* mean, const TfLiteTensor* variance, const float epsilon,
+    const int64_t feature_index, TfLiteTensor* output) {
+  const int operand_rank = operand->dims->size;
+
+  const DataType* scale_data = GetTensorData<DataType>(scale);
+  const DataType* offset_data = GetTensorData<DataType>(offset);
+  const DataType* mean_data = GetTensorData<DataType>(mean);
+  const DataType* variance_data = GetTensorData<DataType>(variance);
+  const DataType* operand_data = GetTensorData<DataType>(operand);
+  DataType* output_data = GetTensorData<DataType>(output);
+  for (int64_t i = 0; i < NumElements(operand); ++i) {
+    int64_t feature_index_value = i % operand->dims->data[feature_index];
+    DataType centered_value = operand_data[i] - mean_data[feature_index_value];
+    DataType stddev = static_cast<DataType>(std::sqrt(
+        static_cast<float>(variance_data[feature_index_value]) + epsilon));
+    output_data[i] =
+        scale_data[feature_index_value] * (centered_value / stddev) +
+        offset_data[feature_index_value];
+  }
   return kTfLiteOk;
 }
 
@@ -444,10 +454,12 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
                       const TfLiteTensor* operand, const TfLiteTensor* scale,
                       const TfLiteTensor* offset, TfLiteTensor* output,
                       TfLiteTensor* batch_mean, TfLiteTensor* batch_var,
-                      int feature_index, float epsilon) {
+                      const int64_t feature_index, const float epsilon) {
   TF_LITE_ENSURE_OK(
-      context, ComputeVariance<DataType>(context, node, operand, feature_index,
-                                         batch_mean, batch_var, output));
+      context,
+      tflite::stablehlo_batch_norm_training::reference::ComputeVariance<
+          DataType>(context, node, operand, feature_index, batch_mean,
+                    batch_var, output));
 
   TF_LITE_ENSURE_OK(
       context, BatchNormInference<DataType>(context, node, operand, scale,
@@ -458,17 +470,16 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <typename DataType>
-TfLiteStatus EvalQuantizedImpl(TfLiteContext* context, TfLiteNode* node,
-                               const TfLiteTensor* operand,
-                               const TfLiteTensor* scale,
-                               const TfLiteTensor* offset, TfLiteTensor* output,
-                               TfLiteTensor* batch_mean,
-                               TfLiteTensor* batch_var,
-
-                               int feature_index, float epsilon) {
-  TF_LITE_ENSURE_OK(context, ComputeQuantizedVariance<DataType>(
-                                 context, node, operand, feature_index,
-                                 batch_mean, batch_var, output));
+TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
+                           const TfLiteTensor* operand,
+                           const TfLiteTensor* scale,
+                           const TfLiteTensor* offset, TfLiteTensor* output,
+                           TfLiteTensor* batch_mean, TfLiteTensor* batch_var,
+                           const int64_t feature_index, const float epsilon) {
+  TF_LITE_ENSURE_OK(context, tflite::stablehlo_batch_norm_training::reference::
+                                 ComputeQuantizedVariance<DataType>(
+                                     context, node, operand, feature_index,
+                                     batch_mean, batch_var, output));
 
   TF_LITE_ENSURE_OK(
       context, BatchNormInferenceQuantized<DataType>(
@@ -503,18 +514,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteStablehloBatchNormTrainingParams* data =
       reinterpret_cast<TfLiteStablehloBatchNormTrainingParams*>(
           node->builtin_data);
-  const int feature_index = data->feature_index;
+  const int64_t feature_index = data->feature_index;
 
-  int input_rank = input->dims->size;
+  const int input_rank = input->dims->size;
   std::vector<int64_t> axis;
-
-  for (int i = 0; i < input_rank; ++i) {
+  for (int64_t i = 0; i < input_rank; ++i) {
     if (i != feature_index) {
       axis.push_back(i);
     }
   }
 
-  TfLiteIntArray* batch_mean_var_shape;
+  TfLiteIntArray* batch_mean_var_shape = nullptr;
   TF_LITE_ENSURE_OK(
       context, GetOutputShape(context, input->dims, input->dims->size, axis,
                               input_rank - 1, &batch_mean_var_shape));
@@ -569,7 +579,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteStablehloBatchNormTrainingParams* data =
       reinterpret_cast<TfLiteStablehloBatchNormTrainingParams*>(
           node->builtin_data);
-  const int feature_index = data->feature_index;
+  const int64_t feature_index = data->feature_index;
   const float epsilon = data->epsilon;
 
   if (operand->type == kTfLiteFloat32) {
@@ -582,21 +592,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return EvalImpl<Eigen::bfloat16>(context, node, operand, scale, offset,
                                      output, batch_mean, batch_var,
                                      feature_index, epsilon);
-  } else if (operand->quantization.type != kTfLiteNoQuantization) {
-    if (operand->type == kTfLiteInt8) {
-      return EvalQuantizedImpl<int8_t>(context, node, operand, scale, offset,
-                                       output, batch_mean, batch_var,
-                                       feature_index, epsilon);
-    } else if (operand->type == kTfLiteInt16) {
-      return EvalQuantizedImpl<int16_t>(context, node, operand, scale, offset,
-                                        output, batch_mean, batch_var,
-                                        feature_index, epsilon);
-    } else {
-      TF_LITE_KERNEL_LOG(context,
-                         "Type %s Quantization not currently supported.",
-                         TfLiteTypeGetName(operand->type));
-      return kTfLiteError;
-    }
+  } else if (operand->type == kTfLiteInt8) {
+    return EvalQuantized<int8_t>(context, node, operand, scale, offset, output,
+                                 batch_mean, batch_var, feature_index, epsilon);
+  } else if (operand->type == kTfLiteInt16) {
+    return EvalQuantized<int16_t>(context, node, operand, scale, offset, output,
+                                  batch_mean, batch_var, feature_index,
+                                  epsilon);
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
                        TfLiteTypeGetName(operand->type));

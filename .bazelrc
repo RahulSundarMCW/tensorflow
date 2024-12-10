@@ -935,3 +935,6 @@ test:rbe_cross_compile_macos_x86 --jobs=100
 
 # Try to load the XLA warnings config if available
 try-import %workspace%/warnings.bazelrc
+
+build:clang-tidy --aspects @bazel_clang_tidy//clang_tidy:clang_tidy.bzl%clang_tidy_aspect
+build:clang-tidy --output_groups=report

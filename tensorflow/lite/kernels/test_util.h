@@ -520,6 +520,8 @@ class SingleOpModel {
   void QuantizeAndPopulate(int index, const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
     auto q = Quantize<T>(data, t->params.scale, t->params.zero_point, t->type);
+    // std :: cout << "t->params.scale = " << t->params.scale << "\n";
+    // std :: cout << "t->params.zero_point = " << t->params.zero_point << "\n";
     PopulateTensor(index, 0, q.data(), q.data() + q.size());
   }
 

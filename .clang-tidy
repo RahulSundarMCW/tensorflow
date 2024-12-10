@@ -1,0 +1,6 @@
+UseColor: true
+
+Checks: >
+    google-*,
+
+WarningsAsErrors: "*"

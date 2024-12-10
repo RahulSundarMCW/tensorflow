@@ -182,101 +182,127 @@ class StablehloBatchNormTrainingOpModel : public SingleOpModel {
   int batch_var_;
 };
 
-// template <typename Float>
-// class StablehloBatchNormTrainingTestFloat : public ::testing::Test {
-//  public:
-//   using FloatType = Float;
-// };
+template <typename Float>
+class StablehloBatchNormTrainingTestFloat : public ::testing::Test {
+ public:
+  using FloatType = Float;
+};
 
-// using FloatTestTypes = ::testing::Types<float, Eigen::half, Eigen::bfloat16>;
+using FloatTestTypes = ::testing::Types<float, Eigen::half, Eigen::bfloat16>;
 
-// TYPED_TEST_SUITE(StablehloBatchNormTrainingTestFloat, FloatTestTypes);
+TYPED_TEST_SUITE(StablehloBatchNormTrainingTestFloat, FloatTestTypes);
 
-// TYPED_TEST(StablehloBatchNormTrainingTestFloat, Ex1) {
-//   using Float = typename TestFixture::FloatType;
-//   TfLiteStablehloBatchNormTrainingParams params = {0.0 /*epsilon*/,
-//                                                    2 /*feature_index*/};
-//   StablehloBatchNormTrainingOpModel model(
-//       {GetTTEnum<Float>(), {2, 2, 2}}, {GetTTEnum<Float>(), {2}},
-//       {GetTTEnum<Float>(), {2}}, {GetTTEnum<Float>(), {}},
-//       {GetTTEnum<Float>(), {}}, {GetTTEnum<Float>(), {}}, params);
-//   model.SetInput<Float>({Float(1.0), Float(2.0), Float(3.0), Float(4.0),
-//                          Float(3.0), Float(4.0), Float(1.0), Float(2.0)});
-//   model.SetScale<Float>({Float(1.0), Float(1.0)});
-//   model.SetOffset<Float>({Float(1.0), Float(1.0)});
+TYPED_TEST(StablehloBatchNormTrainingTestFloat,
+           StablehloBatchNormTrainingFloatTest) {
+  using Float = typename TestFixture::FloatType;
+  TfLiteStablehloBatchNormTrainingParams params = {0.0 /*epsilon*/,
+                                                   2 /*feature_index*/};
+  StablehloBatchNormTrainingOpModel model(
+      {GetTTEnum<Float>(), {2, 2, 2}}, {GetTTEnum<Float>(), {2}},
+      {GetTTEnum<Float>(), {2}}, {GetTTEnum<Float>(), {}},
+      {GetTTEnum<Float>(), {}}, {GetTTEnum<Float>(), {}}, params);
+  model.SetInput<Float>({static_cast<Float>(1.0), static_cast<Float>(2.0),
+                         static_cast<Float>(3.0), static_cast<Float>(4.0),
+                         static_cast<Float>(3.0), static_cast<Float>(4.0),
+                         static_cast<Float>(1.0), static_cast<Float>(2.0)});
+  model.SetScale<Float>({static_cast<Float>(1.0), static_cast<Float>(1.0)});
+  model.SetOffset<Float>({static_cast<Float>(1.0), static_cast<Float>(1.0)});
 
-//   ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-//   EXPECT_THAT(model.GetOutput<Float>(),
-//               ElementsAreArray(ArrayFloatNear(
-//                   {Float(0.0), Float(0.0), Float(2.0), Float(2.0), Float(2.0),
-//                    Float(2.0), Float(0.0), Float(0.0)},
-//                   0.1)));
-//   EXPECT_THAT(model.GetBatchMean<Float>(),
-//               ElementsAreArray(ArrayFloatNear({Float(2.0), Float(3.0)}, 0.1)));
-//   EXPECT_THAT(model.GetBatchVar<Float>(),
-//               ElementsAreArray(ArrayFloatNear({Float(1.0), Float(1.0)}, 0.1)));
-// }
+  EXPECT_THAT(model.GetOutput<Float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<Float>(0.0), static_cast<Float>(0.0),
+                   static_cast<Float>(2.0), static_cast<Float>(2.0),
+                   static_cast<Float>(2.0), static_cast<Float>(2.0),
+                   static_cast<Float>(0.0), static_cast<Float>(0.0)},
+                  0.1)));
+  EXPECT_THAT(model.GetBatchMean<Float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<Float>(2.0), static_cast<Float>(3.0)}, 0.1)));
+  EXPECT_THAT(model.GetBatchVar<Float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<Float>(1.0), static_cast<Float>(1.0)}, 0.1)));
+}
 
-// TYPED_TEST(StablehloBatchNormTrainingTestFloat, Ex2) {
-//   using Float = typename TestFixture::FloatType;
-//   TfLiteStablehloBatchNormTrainingParams params = {0.0 /*epsilon*/,
-//                                                    1 /*feature_index*/};
-//   StablehloBatchNormTrainingOpModel model(
-//       {GetTTEnum<Float>(), {2, 3}}, {GetTTEnum<Float>(), {3}},
-//       {GetTTEnum<Float>(), {3}}, {GetTTEnum<Float>(), {}},
-//       {GetTTEnum<Float>(), {}}, {GetTTEnum<Float>(), {}}, params);
-//   model.SetInput<Float>(
-//       {Float(1.0), Float(2.0), Float(3.0), Float(4.0), Float(5.0), Float(6.0)});
-//   model.SetScale<Float>({Float(1.0), Float(1.0), Float(1.0)});
-//   model.SetOffset<Float>({Float(0.0), Float(0.0), Float(0.0)});
+TYPED_TEST(StablehloBatchNormTrainingTestFloat, Ex2) {
+  using Float = typename TestFixture::FloatType;
+  TfLiteStablehloBatchNormTrainingParams params = {0.0 /*epsilon*/,
+                                                   1 /*feature_index*/};
+  StablehloBatchNormTrainingOpModel model(
+      {GetTTEnum<Float>(), {2, 3}}, {GetTTEnum<Float>(), {3}},
+      {GetTTEnum<Float>(), {3}}, {GetTTEnum<Float>(), {}},
+      {GetTTEnum<Float>(), {}}, {GetTTEnum<Float>(), {}}, params);
+  model.SetInput<Float>({static_cast<Float>(1.0), static_cast<Float>(2.0),
+                         static_cast<Float>(3.0), static_cast<Float>(4.0),
+                         static_cast<Float>(5.0), static_cast<Float>(6.0)});
+  model.SetScale<Float>({static_cast<Float>(1.0), static_cast<Float>(1.0),
+                         static_cast<Float>(1.0)});
+  model.SetOffset<Float>({static_cast<Float>(0.0), static_cast<Float>(0.0),
+                          static_cast<Float>(0.0)});
 
-//   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-//   EXPECT_THAT(
-//       model.GetOutput<Float>(),
-//       ElementsAreArray(ArrayFloatNear({Float(-1.0), Float(-1.0), Float(-1.0),
-//                                        Float(1.0), Float(1.0), Float(1.0)},
-//                                       0.1)));
-//   EXPECT_THAT(model.GetBatchMean<Float>(),
-//               ElementsAreArray(
-//                   ArrayFloatNear({Float(2.5), Float(3.5), Float(4.5)}, 0.1)));
-//   EXPECT_THAT(model.GetBatchVar<Float>(),
-//               ElementsAreArray(ArrayFloatNear(
-//                   {Float(2.25), Float(2.25), Float(2.25)}, 0.1)));
-// }
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput<Float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<Float>(-1.0), static_cast<Float>(-1.0),
+                   static_cast<Float>(-1.0), static_cast<Float>(1.0),
+                   static_cast<Float>(1.0), static_cast<Float>(1.0)},
+                  0.1)));
+  EXPECT_THAT(model.GetBatchMean<Float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<Float>(2.5), static_cast<Float>(3.5),
+                   static_cast<Float>(4.5)},
+                  0.1)));
+  EXPECT_THAT(model.GetBatchVar<Float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<Float>(2.25), static_cast<Float>(2.25),
+                   static_cast<Float>(2.25)},
+                  0.1)));
+}
 
-// TYPED_TEST(StablehloBatchNormTrainingTestFloat, Ex3) {
-//   using Float = typename TestFixture::FloatType;
-//   TfLiteStablehloBatchNormTrainingParams params = {1.0 /*epsilon*/,
-//                                                    1 /*feature_index*/};
-//   StablehloBatchNormTrainingOpModel model(
-//       {GetTTEnum<Float>(), {2, 2, 2}}, {GetTTEnum<Float>(), {2}},
-//       {GetTTEnum<Float>(), {2}}, {GetTTEnum<Float>(), {}},
-//       {GetTTEnum<Float>(), {}}, {GetTTEnum<Float>(), {}}, params);
-//   model.SetInput<Float>({Float(4.721), Float(-1.903), Float(1.939),
-//                          Float(-3.508), Float(-5.371), Float(-0.0968),
-//                          Float(10.517), Float(-9.530)});
-//   model.SetScale<Float>({Float(2.0), Float(3.0)});
-//   model.SetOffset<Float>({Float(2.0), Float(2.0)});
+TYPED_TEST(StablehloBatchNormTrainingTestFloat,
+           StablehloBatchNormTrainingFloatTestWithNonzeroEpsilon) {
+  using Float = typename TestFixture::FloatType;
+  TfLiteStablehloBatchNormTrainingParams params = {1.0 /*epsilon*/,
+                                                   1 /*feature_index*/};
+  StablehloBatchNormTrainingOpModel model(
+      {GetTTEnum<Float>(), {2, 2, 2}}, {GetTTEnum<Float>(), {2}},
+      {GetTTEnum<Float>(), {2}}, {GetTTEnum<Float>(), {}},
+      {GetTTEnum<Float>(), {}}, {GetTTEnum<Float>(), {}}, params);
+  model.SetInput<Float>(
+      {static_cast<Float>(4.721), static_cast<Float>(-1.903),
+       static_cast<Float>(1.939), static_cast<Float>(-3.508),
+       static_cast<Float>(-5.371), static_cast<Float>(-0.0968),
+       static_cast<Float>(10.517), static_cast<Float>(-9.530)});
+  model.SetScale<Float>({static_cast<Float>(2.0), static_cast<Float>(3.0)});
+  model.SetOffset<Float>({static_cast<Float>(2.0), static_cast<Float>(2.0)});
 
-//   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-//   const std::vector<Float> expected_values = {
-//       Float(4.821),  Float(1.312), Float(3.363), Float(0.684),
-//       Float(-0.467), Float(2.019), Float(7.859), Float(-1.672)};
-//   const std::vector<Float> expected_mean = {Float(-0.662), Float(-0.145)};
-//   const std::vector<Float> expected_var = {Float(13.560), Float(57.780)};
-//   EXPECT_THAT(model.GetOutput<Float>(),
-//               ElementsAreArray(ArrayFloatNear(
-//                   {Float(4.821), Float(1.312), Float(3.363), Float(0.684),
-//                    Float(-0.467), Float(2.019), Float(7.859), Float(-1.672)},
-//                   0.1)));
-//   EXPECT_THAT(
-//       model.GetBatchMean<Float>(),
-//       ElementsAreArray(ArrayFloatNear({Float(-0.662), Float(-0.145)}, 0.1)));
-//   EXPECT_THAT(
-//       model.GetBatchVar<Float>(),
-//       ElementsAreArray(ArrayFloatNear({Float(13.560), Float(57.780)}, 0.1)));
-// }
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  const std::vector<Float> expected_values = {
+      static_cast<Float>(4.821),  static_cast<Float>(1.312),
+      static_cast<Float>(3.363),  static_cast<Float>(0.684),
+      static_cast<Float>(-0.467), static_cast<Float>(2.019),
+      static_cast<Float>(7.859),  static_cast<Float>(-1.672)};
+  const std::vector<Float> expected_mean = {static_cast<Float>(-0.662),
+                                            static_cast<Float>(-0.145)};
+  const std::vector<Float> expected_var = {static_cast<Float>(13.560),
+                                           static_cast<Float>(57.780)};
+  EXPECT_THAT(model.GetOutput<Float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<Float>(4.821), static_cast<Float>(1.312),
+                   static_cast<Float>(3.363), static_cast<Float>(0.684),
+                   static_cast<Float>(-0.467), static_cast<Float>(2.019),
+                   static_cast<Float>(7.859), static_cast<Float>(-1.672)},
+                  0.1)));
+  EXPECT_THAT(
+      model.GetBatchMean<Float>(),
+      ElementsAreArray(ArrayFloatNear(
+          {static_cast<Float>(-0.662), static_cast<Float>(-0.145)}, 0.1)));
+  EXPECT_THAT(
+      model.GetBatchVar<Float>(),
+      ElementsAreArray(ArrayFloatNear(
+          {static_cast<Float>(13.560), static_cast<Float>(57.780)}, 0.1)));
+}
 
 // for quantized, the error shouldn't exceed step
 template <typename T>
@@ -293,40 +319,182 @@ class StablehloBatchNormTrainingTestInt : public ::testing::Test {
   using IntType = Int;
 };
 
-using IntTestTypes = ::testing::Types<int8_t>;
+using IntTestTypes = ::testing::Types<int8_t, int16_t>;
 
 TYPED_TEST_SUITE(StablehloBatchNormTrainingTestInt, IntTestTypes);
 
-TYPED_TEST(StablehloBatchNormTrainingTestInt, Ex1) {
+TYPED_TEST(StablehloBatchNormTrainingTestInt,
+           StablehloBatchNormTrainingQuantizedTest) {
   using Int = typename TestFixture::IntType;
-  TfLiteStablehloBatchNormTrainingParams params = {0.01 /*epsilon*/,
+  const float kMin = -20.0f;
+  const float kMax = 20.0f;
+  TfLiteStablehloBatchNormTrainingParams params = {0.0 /*epsilon*/,
                                                    2 /*feature_index*/};
-  float kQuantizedTolerance = GetTolerance<Int>(-7.0f, 7.0f);
+  float kQuantizedTolerance = GetTolerance<Int>(-145.4f, 145.4f);
   StablehloBatchNormTrainingOpModel model(
-      {GetTTEnum<Int>(), {2, 2, 2}, -12.0f, 12.0f},
-      {GetTTEnum<Int>(), {2}, -12.0f, 12.0f},
-      {GetTTEnum<Int>(), {2}, -12.0f, 12.0f}, {GetTTEnum<Int>(), {}, -12.0f, 12.0f},
-      {GetTTEnum<Int>(), {}, -12.0f, 12.0f}, {GetTTEnum<Int>(), {}, -12.0f, 12.0f},
-      params);
+      {GetTTEnum<Int>(), {2, 2, 2}, kMin, kMax},
+      {GetTTEnum<Int>(), {2}, kMin, kMax},
+      {GetTTEnum<Int>(), {2}, kMin, kMax},
+      {GetTTEnum<Int>(), {}, kMin, kMax},
+      {GetTTEnum<Int>(), {}, kMin, kMax},
+      {GetTTEnum<Int>(), {}, kMin, kMax}, params);
   model.QuantizeAndPopulate<Int>(
-      model.input(), {float(1.0), float(-2.0), float(3.0), float(-4.0),
-                      float(3.0), float(-4.0), float(-1.0), float(2.0)});
-  model.QuantizeAndPopulate<Int>(model.scale(), {float(1.0), float(1.0)});
-  model.QuantizeAndPopulate<Int>(model.offset(), {float(1.0), float(1.0)});
+      model.input(), {static_cast<float>(1.0), static_cast<float>(-2.0),
+                      static_cast<float>(3.0), static_cast<float>(-4.0),
+                      static_cast<float>(3.0), static_cast<float>(-4.0),
+                      static_cast<float>(-1.0), static_cast<float>(2.0)});
+  model.QuantizeAndPopulate<Int>(
+      model.scale(), {static_cast<float>(1.0), static_cast<float>(1.0)});
+  model.QuantizeAndPopulate<Int>(
+      model.offset(), {static_cast<float>(1.0), static_cast<float>(1.0)});
 
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetDequantizedOutput<Int>(),
               ElementsAreArray(ArrayFloatNear(
-                  {float(0.69), float(1.0), float(1.90), float(0.18),
-                   float(1.90), float(0.18), float(-0.5), float(2.63)},
-                  0.1)));
-  EXPECT_THAT(
-      model.GetDequantizedBatchMean<Int>(),
-      ElementsAreArray(ArrayFloatNear({float(1.5), float(-2.0)}, 0.1)));
-  EXPECT_THAT(
-      model.GetDequantizedBatchVar<Int>(),
-      ElementsAreArray(ArrayFloatNear({float(2.75), float(6.0)}, 0.1)));
+                  {static_cast<float>(0.69), static_cast<float>(1.0),
+                   static_cast<float>(1.90), static_cast<float>(0.18),
+                   static_cast<float>(1.90), static_cast<float>(0.18),
+                   static_cast<float>(-0.5), static_cast<float>(2.63)},
+                  kQuantizedTolerance)));
+  EXPECT_THAT(model.GetDequantizedBatchMean<Int>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<float>(1.5), static_cast<float>(-2.0)},
+                  kQuantizedTolerance)));
+  EXPECT_THAT(model.GetDequantizedBatchVar<Int>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<float>(2.75), static_cast<float>(6.0)},
+                  kQuantizedTolerance)));
 }
+
+TYPED_TEST(StablehloBatchNormTrainingTestInt,
+           StablehloBatchNormTrainingQuantizedTest_2) {
+  using Int = typename TestFixture::IntType;
+  TfLiteStablehloBatchNormTrainingParams params = {0.0 /*epsilon*/,
+                                                   1 /*feature_index*/};
+  float kQuantizedTolerance = GetTolerance<Int>(-255.0f, 255.0f);
+  StablehloBatchNormTrainingOpModel model(
+      {GetTTEnum<Int>(), {2, 2, 2}, -87.0f, 87.0f},
+      {GetTTEnum<Int>(), {2}, -87.0f, 87.0f},
+      {GetTTEnum<Int>(), {2}, -87.0f, 87.0f},
+      {GetTTEnum<Int>(), {}, -87.0f, 87.0f},
+      {GetTTEnum<Int>(), {}, -87.0f, 87.0f},
+      {GetTTEnum<Int>(), {}, -87.0f, 87.0f}, params);
+  model.QuantizeAndPopulate<Int>(
+      model.input(), {static_cast<float>(12.3), static_cast<float>(10.0),
+                      static_cast<float>(9.0), static_cast<float>(6.0),
+                      static_cast<float>(8.2), static_cast<float>(9.2),
+                      static_cast<float>(2.3), static_cast<float>(15.8)});
+  model.QuantizeAndPopulate<Int>(
+      model.scale(), {static_cast<float>(3.0), static_cast<float>(2.0)});
+  model.QuantizeAndPopulate<Int>(
+      model.offset(), {static_cast<float>(1.0), static_cast<float>(5.0)});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetDequantizedOutput<Int>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<float>(5.03), static_cast<float>(5.62),
+                   static_cast<float>(-0.57), static_cast<float>(4.17),
+                   static_cast<float>(-1.93), static_cast<float>(5.33),
+                   static_cast<float>(-11.96), static_cast<float>(7.73)},
+                  kQuantizedTolerance)));
+  EXPECT_THAT(model.GetDequantizedBatchMean<Int>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<float>(9.92), static_cast<float>(8.27)},
+                  kQuantizedTolerance)));
+  EXPECT_THAT(model.GetDequantizedBatchVar<Int>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {static_cast<float>(3.11), static_cast<float>(30.19)},
+                  kQuantizedTolerance)));
+}
+
+// TYPED_TEST(StablehloBatchNormTrainingTestInt,
+//            HRStablehloBatchNormTrainingQuantizedTest) {
+//   using Int = typename TestFixture::IntType;
+//   const float kMin = -575.0f;
+//   const float kMax = 575.0f;
+//   TfLiteStablehloBatchNormTrainingParams params = {1.0 /*epsilon*/,
+//                                                    2 /*feature_index*/};
+//   float kQuantizedTolerance = GetTolerance<Int>(-255.0f, 255.0f);
+//   StablehloBatchNormTrainingOpModel model(
+//       {GetTTEnum<Int>(), {2, 2, 2}, kMin, kMax},
+//       {GetTTEnum<Int>(), {2}, kMin, kMax},
+//       {GetTTEnum<Int>(), {2}, kMin, kMax},
+//       {GetTTEnum<Int>(), {}, kMin, kMax},
+//       {GetTTEnum<Int>(), {}, kMin, kMax},
+//       {GetTTEnum<Int>(), {}, kMin, kMax}, params);
+//   model.QuantizeAndPopulate<Int>(
+//       model.input(), {static_cast<float>(-5.0), static_cast<float>(18.0),
+//                       static_cast<float>(37.0), static_cast<float>(-35.0),
+//                       static_cast<float>(47.0), static_cast<float>(2.0),
+//                       static_cast<float>(-25.0), static_cast<float>(-0.6)});
+//   model.QuantizeAndPopulate<Int>(
+//       model.scale(), {static_cast<float>(3.0), static_cast<float>(4.0)});
+//   model.QuantizeAndPopulate<Int>(
+//       model.offset(), {static_cast<float>(5.0), static_cast<float>(2.0)});
+
+//   ASSERT_EQ(model.Invoke(), kTfLiteOk);
+//   EXPECT_THAT(model.GetDequantizedOutput<Int>(),
+//               ElementsAreArray(ArrayFloatNear(
+//                   {static_cast<float>(2.283), static_cast<float>(5.501),
+//                    static_cast<float>(7.849), static_cast<float>(-2.263),
+//                    static_cast<float>(9.174), static_cast<float>(3.157),
+//                    static_cast<float>(-0.366), static_cast<float>(2.776)},
+//                   kQuantizedTolerance)));
+//   EXPECT_THAT(model.GetDequantizedBatchMean<Int>(),
+//               ElementsAreArray(ArrayFloatNear(
+//                   {static_cast<float>(15.5), static_cast<float>(-5.9)},
+//                   kQuantizedTolerance)));
+//   EXPECT_THAT(model.GetDequantizedBatchVar<Int>(),
+//               ElementsAreArray(ArrayFloatNear(
+//                   {static_cast<float>(511.53), static_cast<float>(744.35)},
+//                   kQuantizedTolerance)));
+// }
+
+// TYPED_TEST(StablehloBatchNormTrainingTestInt,
+//            HighRangeStablehloBatchNormTrainingQuantizedTest) {
+//   using Int = typename TestFixture::IntType;
+//   const float kMin = -30000.0f;
+//   const float kMax = 30000.0f;
+//   TfLiteStablehloBatchNormTrainingParams params = {1.0 /*epsilon*/,
+//                                                    2 /*feature_index*/};
+//   float kQuantizedTolerance = GetTolerance<Int>(-255.0f, 255.0f);
+//   StablehloBatchNormTrainingOpModel model(
+//       {GetTTEnum<Int>(), {3, 2, 2}, kMin, kMax},
+//       {GetTTEnum<Int>(), {2}, kMin, kMax},
+//       {GetTTEnum<Int>(), {2}, kMin, kMax},
+//       {GetTTEnum<Int>(), {}, kMin, kMax},
+//       {GetTTEnum<Int>(), {}, kMin, kMax},
+//       {GetTTEnum<Int>(), {}, kMin, kMax}, params);
+//   model.QuantizeAndPopulate<Int>(
+//       model.input(), {static_cast<float>(88.0), static_cast<float>(23.0),
+//                       static_cast<float>(112.0), static_cast<float>(135.0),
+//                       static_cast<float>(126.0), static_cast<float>(146.0),
+//                       static_cast<float>(113.0), static_cast<float>(41.0),
+//                       static_cast<float>(35.0), static_cast<float>(99.0),
+//                       static_cast<float>(95.0), static_cast<float>(35.0)});
+//   model.QuantizeAndPopulate<Int>(
+//       model.scale(), {static_cast<float>(2.0), static_cast<float>(3.0)});
+//   model.QuantizeAndPopulate<Int>(
+//       model.offset(), {static_cast<float>(4.0), static_cast<float>(3.0)});
+
+//   ASSERT_EQ(model.Invoke(), kTfLiteOk);
+//   EXPECT_THAT(model.GetDequantizedOutput<Int>(),
+//               ElementsAreArray(ArrayFloatNear(
+//                   {static_cast<float>(3.537), static_cast<float>(-31.631),
+//                    static_cast<float>(5.163), static_cast<float>(36.616),
+//                    static_cast<float>(6.111), static_cast<float>(43.319),
+//                    static_cast<float>(5.230), static_cast<float>(-20.663),
+//                    static_cast<float>(-0.053), static_cast<float>(14.679),
+//                    static_cast<float>(4.011), static_cast<float>(-24.319)},
+//                   kQuantizedTolerance)));
+//   EXPECT_THAT(model.GetDequantizedBatchMean<Int>(),
+//               ElementsAreArray(ArrayFloatNear(
+//                   {static_cast<float>(94.833), static_cast<float>(79.833)},
+//                   kQuantizedTolerance)));
+//   EXPECT_THAT(model.GetDequantizedBatchVar<Int>(),
+//               ElementsAreArray(ArrayFloatNear(
+//                   {static_cast<float>(870.472), static_cast<float>(2422.805)},
+//                   kQuantizedTolerance)));
+// }
 
 }  // namespace
 }  // namespace tflite
