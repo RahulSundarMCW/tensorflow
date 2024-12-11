@@ -215,6 +215,7 @@ using tflite::BuiltinOperator_STABLEHLO_CASE;
 using tflite::BuiltinOperator_STABLEHLO_CBRT;
 using tflite::BuiltinOperator_STABLEHLO_CLAMP;
 using tflite::BuiltinOperator_STABLEHLO_COMPARE;
+using tflite::BuiltinOperator_STABLEHLO_COMPLEX;
 using tflite::BuiltinOperator_STABLEHLO_COMPOSITE;
 using tflite::BuiltinOperator_STABLEHLO_CONCATENATE;
 using tflite::BuiltinOperator_STABLEHLO_CONVERT;
@@ -1250,6 +1251,10 @@ absl::Status ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_CASE: {
       return ParseStablehloCase(op, allocator, builtin_data);
     }
+    case BuiltinOperator_STABLEHLO_COMPLEX: {
+      return ParseStablehloComplex(op, allocator, builtin_data);
+    }
+
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
@@ -3158,6 +3163,13 @@ absl::Status ParseStablehloCase(const Operator* op,
 
   return OkStatus();
 }
+
+absl::Status ParseStablehloComplex(const Operator* op,
+                                     BuiltinDataAllocator* allocator,
+                                     void** builtin_data) {
+  return OkStatus();
+}
+
 
 // We have this parse function instead of directly returning OkStatus() from the
 // switch-case in ParseOpData because this function is used as part of the

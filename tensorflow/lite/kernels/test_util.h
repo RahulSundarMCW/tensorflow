@@ -139,6 +139,16 @@ constexpr TfLiteType typeToTfLiteType<Eigen::bfloat16>() {
   return kTfLiteBFloat16;
 }
 
+template <>
+constexpr TfLiteType typeToTfLiteType<TfLiteComplex64>() {
+  return kTfLiteComplex64;
+}
+
+template <>
+constexpr TfLiteType typeToTfLiteType<TfLiteComplex128>() {
+  return kTfLiteComplex128;
+}
+
 // A test model that contains a single operator. All operator inputs and
 // output are external to the model, so the tests can directly access them.
 // Typical usage:

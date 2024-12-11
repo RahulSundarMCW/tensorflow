@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <limits>
 #include <numeric>
 #include <vector>
@@ -48,7 +49,6 @@ TfLiteStatus EvalImpl(const TfLiteTensor* operand_a,
   const DataType* data_b = reinterpret_cast<const DataType*>(operand_b->data.raw);
   std::complex<DataType>* result_data =
       reinterpret_cast<std::complex<DataType>*>(result->data.raw);
-
   const int num_elements = NumElements(operand_a);
 
   for (int i = 0; i < num_elements; ++i) {
@@ -61,6 +61,7 @@ TfLiteStatus EvalImpl(const TfLiteTensor* operand_a,
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
   const TfLiteTensor* input_a;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kInputRTensor, &input_a));
@@ -70,17 +71,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, output, TfLiteIntArrayCopy(input_a->dims)));
   TF_LITE_ENSURE_TYPES_EQ(context, input_a->type, input_b->type);
-  TF_LITE_ENSURE_EQ(context, TfLiteIntArrayEqual(input_a->dims, output->dims),
-                    true);
+  TF_LITE_ENSURE_EQ(context, TfLiteIntArrayEqual(input_a->dims, output->dims), true);
   if (input_a->type == kTfLiteFloat32) {
     TF_LITE_ENSURE_EQ(context, output->type, kTfLiteComplex64);
   } else if (input_a->type == kTfLiteFloat64) {
     TF_LITE_ENSURE_EQ(context, output->type, kTfLiteComplex128);
   }
-  return context->ResizeTensor(context, output,
-                               TfLiteIntArrayCopy(input_a->dims));
+
+  return kTfLiteOk;
 }
+
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input_a;

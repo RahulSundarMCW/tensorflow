@@ -60,14 +60,41 @@ class ComplexOpModel : public SingleOpModel {
   int output_;
 };
 
+TEST(ComplexOpTest, Float32Test) {
+  ComplexOpModel model({TensorType_FLOAT32, {3, 4}},
+                       {TensorType_FLOAT32, {3, 4}},
+                       {TensorType_COMPLEX64, {}});
+  model.SetInputs<float>({-5.07035875, -3.72310281, -4.24285221, 4.083100e+00,
+                          -3.61923885, -2.82356691, 7.91711425, -0.592124462,
+                          -5.61838675, 5.38161421, -2.99476314, 1.32623148},
+                         {-1.51469374, 0.660175204, -2.72695398, -1.17417383,
+                          3.38128543, 0.810583353, -1.625512, 2.66601849,
+                          4.05134487, 4.48275757, -2.34912467, -0.595442355});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  std::vector<std::complex<float>> expected_values = {
+      {-5.07035875, -1.51469374}, {-3.72310281, 0.660175204},
+      {-4.24285221, -2.72695398}, {4.083100e+00, -1.17417383},
+      {-3.61923885, 3.38128543},  {-2.82356691, 0.810583353},
+      {7.91711425, -1.625512},    {-0.592124462, 2.66601849},
+      {-5.61838675, 4.05134487},  {5.38161421, 4.48275757},
+      {-2.99476314, -2.34912467}, {1.32623148, -0.595442355}};
+  std::vector<std::complex<float>> result_values =
+      model.GetOutput<std::complex<float>>();
+  EXPECT_THAT(result_values, ElementsAreArray(expected_values));
+}
+
 TEST(ComplexOpTest, Float64Test) {
   ComplexOpModel model({TensorType_FLOAT64, {2}}, {TensorType_FLOAT64, {2}},
-                       {TensorType_COMPLEX128, {2}});
+                       {TensorType_COMPLEX128, {}});
   model.SetInputs<_Float64>({1.0, 3.0}, {2.0, 4.0});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  std::vector<TfLiteComplex64> expected_values = {{1.0, 2.0}, {3.0, 4.0}};
-  EXPECT_THAT(model.GetOutput<TfLiteComplex64>(),
-              ElementsAreArray(expected_values));
+  std::vector<std::complex<_Float64>> expected_values = {
+      {1.0f, 2.0f},
+      {3.0f, 4.0f},
+  };
+  std::vector<std::complex<_Float64>> result_values =
+      model.GetOutput<std::complex<_Float64>>();
+  EXPECT_THAT(result_values, ElementsAreArray(expected_values));
 }
 
 }  // namespace
