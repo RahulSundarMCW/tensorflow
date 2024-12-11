@@ -125,11 +125,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
       TF_LITE_TRANSPOSE(reference_ops, int8_t);
       break;
-    case kTfLiteInt16:
-      TF_LITE_TRANSPOSE(reference_ops, int16_t);
-      break;
+    // case kTfLiteInt16:
+    //   TF_LITE_TRANSPOSE(reference_ops, int16_t);
+    //   break;
     case kTfLiteInt64:
       TF_LITE_TRANSPOSE(reference_ops, int64_t);
+      break;
+    case kTfLiteFloat16:
+      TF_LITE_TRANSPOSE(reference_ops, Eigen::half);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,

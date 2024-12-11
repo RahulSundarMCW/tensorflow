@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_TRANSPOSE_H_
 
 #include <array>
-
+#include "Eigen/Core"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -124,10 +124,10 @@ struct TransposeStorageType<1> {
   using type = int8_t;
 };
 
-template <>
-struct TransposeStorageType<2> {
-  using type = int16_t;
-};
+// template <>
+// struct TransposeStorageType<2> {
+//   using type = int16_t;
+// };
 
 template <>
 struct TransposeStorageType<4> {
@@ -137,6 +137,11 @@ struct TransposeStorageType<4> {
 template <>
 struct TransposeStorageType<8> {
   using type = int64_t;
+};
+
+template <>
+struct TransposeStorageType<2> {
+  using type = Eigen::half;
 };
 
 // Sets up the stride arrays for the recursive transpose algorithm.
